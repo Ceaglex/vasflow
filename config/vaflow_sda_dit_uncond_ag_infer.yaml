@@ -1,0 +1,86 @@
+# model:
+#   params:
+#     vaflow_ckpt_path : "/root/workspace/vaflow/log/2025_02_18-13_18_10-vaflow_sda_dit_uncond_joint_tune_vae/ckpt/epoch=0059-step=1.71e+05.ckpt"
+#     vaflow_ckpt_path_ag : "/root/workspace/vaflow/log/2025_02_13-00_52_05-vaflow_sda_dit_uncond/ckpt/epoch=0009-step=2.28e+04.ckpt"
+#     ignore_keys: []
+#     guidance_scale          : 3.0
+#     sample_steps            : 25
+#     sample_method           : dopri5
+#     num_samples_per_prompt  : 1
+
+
+
+model:
+  base_learning_rate: 3.0e-7
+  target: worker.vaflow_sda_dit_uncond_ag.VAFlow
+  params:        
+    # Model setting
+    ckpt_dir_image_encoder     : "/data_mount/ckpt/clip/ViT-B-16.pt"
+    audiocodec_ckpt_path       : "/data_mount/ckpt/stable_audio/stable-audio-open-1.0/vae"
+    cond_feat_dim              : 768
+    latent_length              : 215
+    videoclipvae_ckpt_path     : "/root/workspace/vaflow/log/2025_01_14-16_28_02-vae_sda_with_cl_corrected/ckpt/epoch=0419-step=3.04e+05.ckpt"
+    videoclipvae_config        : 
+      target        : model.vae.vae_vanilla.VanillaVAE_1D
+      params        :
+        in_channels : 768
+        latent_dim  : 64
+        hidden_dims : [512, 256, 128]
+        decoder_with_mid : False
+    ckpt_dir_audio_dit         : "/data_mount/ckpt/stable_audio/stable-audio-open-1.0/transformer"
+    dit_num_layers             : 24       # 12  |  24  |  6
+    dit_ckpt_path              : Null
+    vaflow_ckpt_path                                        : "/root/workspace/vaflow/log/2025_02_18-13_18_10-vaflow_sda_dit_uncond_joint_tune_vae/ckpt/epoch=0059-step=1.71e+05.ckpt"
+    # vaflow_ckpt_path_ag                                     : "/root/workspace/vaflow/log/2025_02_18-13_18_10-vaflow_sda_dit_uncond_joint_tune_vae/ckpt/epoch=0004-step=1.43e+04.ckpt"
+    # vaflow_ckpt_path_ag                                     : "/root/workspace/vaflow/log/2025_02_13-00_52_05-vaflow_sda_dit_uncond/ckpt/epoch=0034-step=7.99e+04.ckpt"
+    # vaflow_ckpt_path_ag                                     : "/root/workspace/vaflow/log/2025_02_13-00_52_05-vaflow_sda_dit_uncond/ckpt/epoch=0014-step=3.42e+04.ckpt"
+    vaflow_ckpt_path_ag                                     : "/root/workspace/vaflow/log/2025_02_18-13_18_10-vaflow_sda_dit_uncond_joint_tune_vae/ckpt/epoch=0009-step=2.85e+04.ckpt"
+    ignore_keys                : []
+    # Training setting
+    video_interpolate_mode  : "nearest"
+    lr_warmup_steps         : 2000
+    use_cache_video_feat    : True     # Related to {}
+    # unconditional_prob      : 0.3
+    scale_factor            : 1.0
+    videoclipvae_tune       : True
+    # Val and infer setting  
+    guidance_scale          : 2.0
+    sample_steps            : 50
+    sample_method           : dopri5    # dopri5  |  midpoint
+    audio_sample_rate       : 44100
+    num_samples_per_prompt  : 1
+    # PL training setting 
+    monitor           : Null
+    log_data_time     : False         # False  |  True
+
+
+
+infer_data:
+  ckpt_path           : Null
+  batch_size          : 10
+  num_workers         : 5
+  prefetch_factor     : 2
+  persistent_workers  : False
+  collate_fn          : Null
+  
+  target            : dataset.video.VideoDataset
+  params:
+    # Dataset params
+    verbose             : False
+    load_mode_meta      : Null
+    load_mode_item      : video_feat_with_waveform
+    meta_dir            : "/data_mount/vadio/meta/vggsound_split_withaudiosetrhythm_mp4xclipb16xibva_docker"
+    split               : test                      
+    # Audio video params
+    audio_process_config : ${data.audio_process}
+    video_process_config : ${data.video_process}
+
+
+
+lightning:
+  logger:
+    target        : pytorch_lightning.loggers.wandb.WandbLogger
+    params: 
+      project     : VAFlow 
+      group       : infer  
+      # name        : bridge_dit_base_time_adaln_animatediff_audioldm_perceiver_cubic_aa

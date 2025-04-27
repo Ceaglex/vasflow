@@ -1,0 +1,36 @@
+model:
+  params:
+    vaflow_ckpt_path : "/root/workspace/vaflow/log/2025_01_09-15_37_40-vaflow_beta/ckpt/epoch=0059-step=2.17e+05.ckpt"
+    ignore_keys: ["solver."]
+
+
+
+infer_data:
+  ckpt_path           : Null
+  batch_size          : 20
+  num_workers         : 20
+  prefetch_factor     : 2
+  persistent_workers  : False
+  collate_fn          : Null
+  
+  target            : dataset.video.VideoDataset
+  params:
+    # Dataset params
+    verbose             : False
+    load_mode_meta      : Null
+    load_mode_item      : video_feat_with_waveform
+    meta_dir            : ${data.vggass.meta_dir}
+    split               : val_sample200                       # val  |  val_sample200
+    # Audio video params
+    audio_process_config : ${data.audio_process}
+    video_process_config : ${data.video_process}
+
+
+
+lightning:
+  logger:
+    target        : pytorch_lightning.loggers.wandb.WandbLogger
+    params: 
+      project     : VAFlow 
+      group       : infer  
+      # name        : bridge_dit_base_time_adaln_animatediff_audioldm_perceiver_cubic_aa

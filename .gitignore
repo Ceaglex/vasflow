@@ -1,0 +1,24 @@
+log
+val
+lightning_logs
+predict
+predict_encoder
+model
+util
+*/__pycache__/*
+# *.ipynb
+*.pkl
+*.pth
+*.ckpt
+*.pt
+*.pth.tar
+*.pt.tar
+*.wav
+*.mp4
+*.out
+*.txt
+*.png
+nohup.out
+predict.out
+test.py
+.git
