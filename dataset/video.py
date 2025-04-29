@@ -5,6 +5,7 @@ from tqdm import tqdm
 from einops import rearrange
 from typing import Union, List
 from librosa.filters import mel as librosa_mel
+from util.mel_filter import extract_batch_mel
 
 import torch, torchaudio, torchvision
 import torchvision.transforms as transforms
@@ -13,6 +14,7 @@ try:
     BICUBIC = InterpolationMode.BICUBIC
 except ImportError:
     BICUBIC = Image.BICUBIC
+
 
 
 def collate_fn_for_text(batch):
@@ -68,8 +70,8 @@ class VideoDataset(torch.utils.data.Dataset):
         self.video_process_config = video_process_config
         assert self.audio_process_config.duration == self.video_process_config.duration, "Audio and video duration should be the same."
         self.duration = self.audio_process_config.duration
-        self.latent_length = int(self.duration * round(21.5*(self.audio_process_config.sample_rate / 44100), 2))
         self.video_process_config.target_frame_length = int(self.duration * self.video_process_config.target_sampling_rate)
+        self.channel_num = self.audio_process_config.channel_num
 
         # Video frame transform
         if isinstance(self.video_process_config.resize_input_size, int):
@@ -248,10 +250,8 @@ class VideoDataset(torch.utils.data.Dataset):
         cur_va_path, cur_feat_path, duration_matrix, phone_id, phone_seq = self.metas[idx]
         cur_video_id, _ = os.path.splitext(os.path.basename(cur_va_path))
         video_feat = torch.Tensor(np.load(cur_feat_path))
-
-
     
-        audio_waveform, audio_sr, audio_duration = self.prepare_audio_data_from_va_file(va_path=cur_va_path, return_duration=True)
+        audio_waveform, audio_sr, audio_duration = self.prepare_audio_data_from_va_file(va_path=cur_va_path, return_duration=True, channel_num = self.channel_num)
         if 'audio_fake_duration' in duration_matrix:
             cur_video_id = f"audio_{cur_video_id}"
             # phone_id = torch.Tensor([0]).to(torch.int)
@@ -263,9 +263,6 @@ class VideoDataset(torch.utils.data.Dataset):
         phone_id = torch.Tensor([int(i) for i in phone_id.split(" ")]).to(torch.int)
         phone_seq = [i for i in phone_seq.split(" ")]
         duration_matrix = torch.Tensor(np.load(duration_matrix))
-
-
-
 
         return {
             "video_id": cur_video_id,
@@ -318,8 +315,9 @@ class VideoDataset(torch.utils.data.Dataset):
             "audio_waveform": audio_waveform,
             "audio_sr": audio_sr
         }
-        
-    def prepare_audio_data_from_va_file(self, va_path, return_duration = False):
+    
+
+    def prepare_audio_data_from_va_file(self, va_path, return_duration = False, channel_num = 2):
         try:
             audio_waveform, audio_sr = torchaudio.load(va_path)
         except BaseException as e:
@@ -329,13 +327,16 @@ class VideoDataset(torch.utils.data.Dataset):
         if audio_sr != self.audio_process_config.sample_rate:
             audio_waveform = torchaudio.transforms.Resample(audio_sr, self.audio_process_config.sample_rate)(audio_waveform)
             audio_sr = self.audio_process_config.sample_rate
-        if audio_waveform.size(0) == 1: # Mono audio, duplicate the channel to create stereo.
+        if channel_num == 2 and audio_waveform.size(0) == 1: # Mono audio, duplicate the channel to create stereo.
             audio_waveform = audio_waveform.repeat(2, 1)
-            
+        elif channel_num == 1 and audio_waveform.size(0) != 1:  # stereo audio, mean the channel to create mono.
+            audio_waveform = audio_waveform.mean(dim = 0, keepdim=True)
+
+
         # Pad and trim audio waveform
         if audio_waveform.size(1) < int(audio_sr*self.audio_process_config.duration):
             p = int(audio_sr*self.audio_process_config.duration) - audio_waveform.size(1)
-            audio_waveform = torch.cat([audio_waveform, torch.zeros(2, p)], dim=1)
+            audio_waveform = torch.cat([audio_waveform, torch.zeros(channel_num, p)], dim=1)
         elif audio_waveform.size(1) > int(audio_sr*self.audio_process_config.duration):
             audio_waveform = audio_waveform[:, :int(audio_sr*self.audio_process_config.duration)]
         
@@ -343,6 +344,7 @@ class VideoDataset(torch.utils.data.Dataset):
             return audio_waveform, audio_sr, audio_duration
         else:
             return audio_waveform, audio_sr
+
 
     def prepare_video_data_from_va_file(self, va_path, backend="decord",):
         ''' Load video data '''

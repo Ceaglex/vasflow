@@ -10,8 +10,8 @@ export TOKENIZERS_PARALLELISM=false
 
 python\
     main.py \
-    --base "./config/vaflow_sda_dit_noise_text.yaml" \
+    --base "./config/vaflow_sda_dit_noise_text_mel.yaml" \
     -f "_noise_sr16000" \
     -t True \
     -i False \
-    --devices '0,1,2,3'
+    --devices "0,1,2,3"

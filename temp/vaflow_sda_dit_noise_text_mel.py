@@ -144,8 +144,6 @@ class VAFlow(pl.LightningModule):
         self.pos_ebd_scale = _dit_cross_attn_dim ** -0.5
         self.positional_embedding = torch.nn.Embedding(num_embeddings=2000, embedding_dim=phone_ebd_dim)
         self.positional_embedding.requires_grad_(True)
-        self.exp_positional_embedding = torch.nn.Embedding(num_embeddings=2000, embedding_dim=phone_ebd_dim)
-        self.exp_positional_embedding.requires_grad_(True)
         self.cond_proj = nn.Sequential(
             nn.Linear(cond_feat_dim, _dit_cross_attn_dim, bias=False),
             nn.SiLU(),
@@ -156,6 +154,7 @@ class VAFlow(pl.LightningModule):
         self.original_channel = original_channel
 
         ''' Init. Load ckpt. Tuning and Lora setting. '''
+        # TODO: Load
         # self.init_weight()
         if not vaflow_custom and ckpt_dir_audio_dit is not None:
             self.init_dit_layers(ckpt_dir_audio_dit)
@@ -359,8 +358,7 @@ class VAFlow(pl.LightningModule):
         with torch.no_grad():
             audio_latent = self.vae.encode(log_mel_spec.to(self.vae.encoder.conv_in.weight.dtype)).latent_dist    #  [bs, 8, target_mel_length/4(250), n_mel/4(16)]
             audio_latent = audio_latent.sample()                                                                  #  [bs, 8, target_mel_length/4(250), n_mel/4(16)]
-            audio_latent = audio_latent.transpose(-2,-1).transpose(-2,-3)                                         #  [bs, n_mel/4(16), 8, target_mel_length/4(250)]
-            audio_latent = audio_latent.reshape([batch_size, -1, audio_latent.shape[-1]])                         #  [bs, original_channel(8*16), target_mel_length/4(250)]
+            audio_latent = audio_latent.transpose(-2,-1).reshape([batch_size, -1, audio_latent.shape[-2]])        #  [bs, original_channel(8*16), target_mel_length/4(250)]
         
         audio_latent = audio_latent.detach()                #  [bs, original_channel, target_mel_length/4(250)]
         audio_latent = audio_latent * self.scale_factor
@@ -375,12 +373,10 @@ class VAFlow(pl.LightningModule):
             duration_matrix[:,:,0] = 1                                                                       # [bs, latent_length, padded_phone_length]
 
         phone_latent = self.phone_embedding(phone_id)                                                         # [bs, padded_phone_length, phone_latent_dim]
-        pos_ebd = self.pos_ebd_scale * self.positional_embedding(torch.tensor([[i for i in range(phone_latent.shape[1])]], device = device)).to(phone_latent.dtype)  # [1, padded_phone_length, phone_latent_dim]
+        pos_ebd = self.pos_ebd_scale * self.positional_embedding(torch.tensor([[i for i in range(phone_latent.shape[1])]], device = phone_latent.device)).to(phone_latent.dtype)  # [1, padded_phone_length, phone_latent_dim]
         phone_latent = phone_latent + pos_ebd                                                                 # [bs, padded_phone_length, phone_latent_dim]
-        # TODO: New positional ebd may needed
-        expanded_phone_latent = torch.bmm(duration_matrix, phone_latent)                                      # [bs, latent_length, phone_latent_dim]
-        exp_pos_ebd = self.pos_ebd_scale * self.exp_positional_embedding(torch.tensor([[i for i in range(expanded_phone_latent.shape[1])]], device = device)).to(expanded_phone_latent.dtype)  # [1, latent_length, phone_latent_dim]
-        expanded_phone_latent = (expanded_phone_latent + exp_pos_ebd).transpose(1,2)                          # [bs, phone_latent_dim, latent_length]
+        # TODO: New duration matrix data is needed
+        expanded_phone_latent = torch.bmm(duration_matrix, phone_latent).transpose(1,2)                       # [bs, phone_latent_dim, latent_length]
         # expanded_phone_latent = torch.zeros([batch_size, 32, self.latent_length]).to(device)                # [bs, phone_latent_dim, latent_length]
         audio_latent = torch.cat([audio_latent, expanded_phone_latent], dim=1)  # [bs, original_channel + phone_latent_dim, latent_length]
         video_latent = torch.cat([video_latent, expanded_phone_latent], dim=1)  # [bs, original_channel + phone_latent_dim, latent_length]
@@ -434,39 +430,26 @@ class VAFlow(pl.LightningModule):
 
 
 
-        # # # # # 3. Log to audio.
-        # # audio_latent = audio_latent[:, :self.original_channel, :]  # [bs, original_channel, latent_length]
-        # # audio_latent = audio_latent / self.scale_factor
+        # # # # 3. Log to audio.
+        # # # audio_latent = audio_latent[:, :self.original_channel, :]  # [bs, original_channel, latent_length]
+        # # # # audio_latent = einops.rearrange(audio_latent, "b f c -> b c f")
+        # # # audio_latent = audio_latent / self.scale_factor
 
+        # # # audio_latent = audio_latent.reshape([batch_size, 8, -1, audio_latent.shape[-1]])   # [bs, 8, 16, latent_length]
+        # # # audio_latent = audio_latent.transpose(-2, -1)                                      # [bs, 8, latent_length, 16]
+            
+        # # # mel_spectrogram = self.vae.decode(audio_latent).sample                             # [bs, 1, target_mel_length(latent_length*4), 64(16*4)]
+        # # # gen_audio = self.vocoder(mel_spectrogram.squeeze(1))                               # [bs, duration*sr+...]
+        # # # gen_audio = gen_audio.cpu()
 
-        # # # # audio_latent_cropped = audio_latent[:,:64,:125]                                                            # [bs, 64, 125]
-        # # # # audio_latent_cropped = audio_latent_cropped.reshape([batch_size, -1, 8, audio_latent_cropped.shape[-1]])   # [bs, 8, 8, 125]
-        # # # # audio_latent_cropped = audio_latent_cropped.transpose(-2,-3).transpose(-2, -1)                             # [bs, 8, 125, 8]
-        # # # # with torch.no_grad():
-        # # # #     mel_spectrogram_cropped = self.vae.decode(audio_latent_cropped).sample                             # [bs, 1, 500, 32]
-        # # # #     mel_spectrogram_cropped = torch.concat((mel_spectrogram_cropped, -11*torch.ones((batch_size, 1, 500, 32), device = device)), dim = -1)  # [bs, 1, 500, 64]
-        # # # #     gen_audio_cropped = self.vocoder(mel_spectrogram_cropped.squeeze(1))                               # [bs, cropped_duration*sr+...]
-        # # # #     gen_audio_cropped = gen_audio_cropped.cpu()
-        # # # # for i, audio in enumerate(gen_audio_cropped):
-        # # # #     audio = audio[:int(audio_sr[i]*audio_duration[i])].unsqueeze(0)                # [1, cropped_duration*sr]
-        # # # #     audio_path = os.path.join('./log/test_reshape', "{}_cropped.wav".format(video_id[i]))
-        # # # #     torchaudio.save(audio_path, audio, self.audio_sample_rate) 
+        # # # for i, audio in enumerate(gen_audio):
+        # # #     audio = audio[:int(audio_sr[i]*audio_duration[i])].unsqueeze(0)                # [1, duration*sr]
+        # # #     audio_path = os.path.join('./log/test_reshape', "{}_rec.wav".format(video_id[i]))
+        # # #     torchaudio.save(audio_path, audio, self.audio_sample_rate) 
 
-
-        # # audio_latent = audio_latent.reshape([batch_size, -1, 8, audio_latent.shape[-1]])   # [bs, 16, 8, latent_length]
-        # # audio_latent = audio_latent.transpose(-2,-3).transpose(-2, -1)                     # [bs, 8, latent_length, 16]
-        # # with torch.no_grad():
-        # #     mel_spectrogram = self.vae.decode(audio_latent).sample                             # [bs, 1, target_mel_length(latent_length*4), 64(16*4)]
-        # #     gen_audio = self.vocoder(mel_spectrogram.squeeze(1))                               # [bs, duration*sr+...]
-        # #     gen_audio = gen_audio.cpu()
-        # # for i, audio in enumerate(gen_audio):
-        # #     audio = audio[:int(audio_sr[i]*audio_duration[i])].unsqueeze(0)                # [1, duration*sr]
-        # #     audio_path = os.path.join('./log/test_reshape', "{}_rec.wav".format(video_id[i]))
-        # #     torchaudio.save(audio_path, audio, self.audio_sample_rate) 
-
-        # #     audio = waveform[i,:int(audio_sr[i]*audio_duration[i])].unsqueeze(0).cpu()     # [1, duration*sr]
-        # #     audio_path = os.path.join('./log/test_reshape', "{}_gt.wav".format(video_id[i]))
-        # #     torchaudio.save(audio_path, audio, self.audio_sample_rate) 
+        # # #     audio = waveform[i,:int(audio_sr[i]*audio_duration[i])].unsqueeze(0).cpu()     # [1, duration*sr]
+        # # #     audio_path = os.path.join('./log/test_reshape', "{}_gt.wav".format(video_id[i]))
+        # # #     torchaudio.save(audio_path, audio, self.audio_sample_rate) 
 
 
         return loss
@@ -506,12 +489,10 @@ class VAFlow(pl.LightningModule):
             video_latent = randn_tensor((batch_size, self.original_channel, self.latent_length), device=device, generator=generator) # [bs, original_channel, latent_length]
 
             phone_latent = self.phone_embedding(phone_id)                                                         # [bs, padded_phone_length, phone_latent_dim]
-            pos_ebd = self.pos_ebd_scale * self.positional_embedding(torch.tensor([[i for i in range(phone_latent.shape[1])]], device = device)).to(phone_latent.dtype)  # [1, padded_phone_length, phone_latent_dim]
+            pos_ebd = self.pos_ebd_scale * self.positional_embedding(torch.tensor([[i for i in range(phone_latent.shape[1])]], device = phone_latent.device)).to(phone_latent.dtype)  # [1, padded_phone_length, phone_latent_dim]
             phone_latent = phone_latent + pos_ebd                                                                 # [bs, padded_phone_length, phone_latent_dim]
-            # TODO: New positional ebd may needed
-            expanded_phone_latent = torch.bmm(duration_matrix, phone_latent)                                      # [bs, latent_length, phone_latent_dim]
-            exp_pos_ebd = self.pos_ebd_scale * self.exp_positional_embedding(torch.tensor([[i for i in range(expanded_phone_latent.shape[1])]], device = device)).to(expanded_phone_latent.dtype)  # [1, latent_length, phone_latent_dim]
-            expanded_phone_latent = (expanded_phone_latent + exp_pos_ebd).transpose(1,2)                          # [bs, phone_latent_dim, latent_length]
+            # TODO: New duration matrix data is needed
+            expanded_phone_latent = torch.bmm(duration_matrix, phone_latent).transpose(1,2)                       # [bs, phone_latent_dim, latent_length]
             # expanded_phone_latent = torch.zeros([batch_size, 32, self.latent_length]).to(device)                # [bs, phone_latent_dim, latent_length]
             video_latent = torch.cat([video_latent, expanded_phone_latent], dim=1)                                # [bs, original_channel + phone_latent_dim, latent_length]
 
@@ -519,9 +500,8 @@ class VAFlow(pl.LightningModule):
             phone_latent_uncond = phone_latent_uncond + pos_ebd                                                   # [bs, padded_phone_length, phone_latent_dim]
             duration_matrix_uncond = torch.zeros_like(duration_matrix, dtype = duration_matrix.dtype).to(device)  # [bs, latent_length, padded_phone_length]
             duration_matrix_uncond[:,:,0] = 1                                                                     # [bs, latent_length, padded_phone_length]
-            # TODO: New positional ebd may needed
-            expanded_phone_latent_uncond = torch.bmm(duration_matrix_uncond, phone_latent_uncond)                 # [bs, latent_length, phone_latent_dim]
-            expanded_phone_latent_uncond = (expanded_phone_latent_uncond + exp_pos_ebd).transpose(1,2)            # [bs, phone_latent_dim, latent_length]
+            # TODO: New duration matrix data is needed
+            expanded_phone_latent_uncond = torch.bmm(duration_matrix_uncond, phone_latent_uncond).transpose(1,2)  # [bs, original_channel + phone_latent_dim, latent_length]
             # expanded_phone_latent_uncond = torch.zeros([batch_size, 32, self.latent_length]).to(device)         # [bs, phone_latent_dim, latent_length]
 
 
@@ -553,10 +533,11 @@ class VAFlow(pl.LightningModule):
             # 3. Log to audio.
             audio_latent = synthetic_samples                           # [bs, original_channel + phone_latent_dim, latent_length]
             audio_latent = audio_latent[:, :self.original_channel, :]  # [bs, original_channel, latent_length]
+            # audio_latent = einops.rearrange(audio_latent, "b f c -> b c f")
             audio_latent = audio_latent / self.scale_factor
 
-            audio_latent = audio_latent.reshape([batch_size, -1, 8, audio_latent.shape[-1]])   # [bs, 16, 8, latent_length]
-            audio_latent = audio_latent.transpose(-2,-3).transpose(-2, -1)                     # [bs, 8, latent_length, 16]
+            audio_latent = audio_latent.reshape([batch_size, 8, -1, audio_latent.shape[-1]])   # [bs, 8, 16, latent_length]
+            audio_latent = audio_latent.transpose(-2, -1)                                      # [bs, 8, latent_length, 16]
             
             mel_spectrogram = self.vae.decode(audio_latent).sample                             # [bs, 1, target_mel_length(latent_length*4), 64(16*4)]
             gen_audio = self.vocoder(mel_spectrogram.squeeze(1))                               # [bs, duration*sr+...]
@@ -571,8 +552,7 @@ class VAFlow(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0, custom_device=None):
         with torch.no_grad():
-            self.validation_step_(batch=batch, batch_idx=batch_idx)
-        return 0.0
+            return self.validation_step_(batch=batch, batch_idx=batch_idx, dataloader_idx=dataloader_idx, custom_device=custom_device)
 
 
     def validation_epoch_end(self, val_step_outputs):
@@ -588,8 +568,7 @@ class VAFlow(pl.LightningModule):
     
     def predict_step(self, batch, batch_idx, dataloader_idx=0,):
         with torch.no_grad():
-            self.validation_step_(batch=batch, batch_idx=batch_idx)
-        return 0.0
+            return self.validation_step_(batch=batch, batch_idx=batch_idx)
 
     @torch.no_grad()
     def encode_image(self, image, use_projection=False):
