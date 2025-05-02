@@ -6,9 +6,10 @@ model:
     ckpt_dir_image_encoder     : "/home/chengxin/chengxin/vasflow/model/clip/ckpt/ViT-B-16.pt"
     ckpt_dir_audio_dit         : "/home/chengxin/chengxin/vasflow/model/stable_audio/ckpt/transformer"
     ckpt_dir_vocoder           : "/data-04/xihua/data/ckpt/audioldm2/huggingface/vocoder"
-    vaflow_ckpt_path           : "./log/2025_02_18-23_57_33-vaflow_sda_dit_noise/ckpt/epoch=0094-step=2.17e+05.ckpt"
-    ignore_keys                : ['vaflow.preprocess_conv', 'vaflow.postprocess_conv', 'vaflow.proj_in', 'vaflow.proj_out']    # modified
-    phone_ebd_dim              : 32      # /home/chengxin/chengxin/vasflow/model/stable_audio/ckpt/transformer/config.json -- in_channels and out_channels = phone_ebd_dim + original_channel
+    vaflow_ckpt_path           : "./log/2025_04_30-01_06_12-vaflow_sda_dit_noise_text_mel_noise_sr16000/ckpt/epoch=0019-step=2.62e+04.ckpt"    #   "./log/2025_02_18-23_57_33-vaflow_sda_dit_noise/ckpt/epoch=0094-step=2.17e+05.ckpt"
+    resume_training            : False     # False
+    ignore_keys                : ['ref_proj', 'vaflow.preprocess_conv', 'vaflow.postprocess_conv', 'vaflow.proj_in', 'vaflow.proj_out']       # ['vaflow.preprocess_conv', 'vaflow.postprocess_conv', 'vaflow.proj_in', 'vaflow.proj_out']    # modified
+    phone_ebd_dim              : 32       # /home/chengxin/chengxin/vasflow/model/stable_audio/ckpt/transformer/config.json -- in_channels and out_channels = phone_ebd_dim + original_channel (+1)
     cond_feat_dim              : 768
     dit_num_layers             : 24       # 12  |  24  |  6
     # VAE setting
@@ -68,9 +69,9 @@ data:
         # Dataset params
         verbose             : False
         load_mode_meta      : Null
-        load_mode_item      : video_feat_text_with_waveform     # video_frame  |  video_feat  |  video_feat_with_waveform
+        load_mode_item      : video_feat_ref_text_with_waveform     # video_frame  |  video_feat  |  video_feat_with_waveform
         meta_dir            : ${data.vggass.meta_dir}
-        split               : train_25_Chem_LRS2_GRID_VGG_LibriTTS      # train  |  train_speconly_ibtop_half   |  train_speconly
+        split               : train_25_ref_Chem_LRS2_GRID_VGG_LibriTTS_LJSpeech      # train  |  train_speconly_ibtop_half   |  train_speconly
         dilimeter           : ${data.vggass.dilimeter}
         # Audio video params
         audio_process_config : ${data.audio_process}
@@ -81,9 +82,9 @@ data:
         # Dataset params
         verbose             : False
         load_mode_meta      : Null
-        load_mode_item      : video_feat_text_with_waveform
+        load_mode_item      : video_feat_ref_text_with_waveform
         meta_dir            : ${data.vggass.meta_dir}
-        split               : test_25_sample_3k_Chem_LRS2_GRID_VGG_LibriTTS                       # val  |  val_sample200
+        split               : test_25_ref_sample_3k_Chem_LRS2_GRID_VGG_LibriTTS_LJSpeech                       # val  |  val_sample200
         dilimeter           : ${data.vggass.dilimeter}
         # Audio video params
         audio_process_config : ${data.audio_process}
@@ -94,9 +95,9 @@ data:
         # Dataset params
         verbose             : False
         load_mode_meta      : Null
-        load_mode_item      : video_feat_text_with_waveform
+        load_mode_item      : video_feat_ref_text_with_waveform
         meta_dir            : ${data.vggass.meta_dir}
-        split               : test_25_sample_3k_Chem_LRS2_GRID_VGG_LibriTTS
+        split               : test_25_ref_sample_3k_Chem_LRS2_GRID_VGG_LibriTTS_LJSpeech
         dilimeter           : ${data.vggass.dilimeter}
         # Audio video params
         audio_process_config : ${data.audio_process}

@@ -21,6 +21,8 @@ def collate_fn_for_text(batch):
     video_id = [i['video_id'] for i in batch]
     video_feat = torch.stack([i['video_feat'] for i in batch])
     video_path = [i['video_path'] for i in batch]
+    ref_audio_ebd = torch.stack([i['ref_audio_ebd'] for i in batch])
+    ref_audio_path = [i['ref_audio_path'] for i in batch]
     audio_waveform = torch.stack([i['audio_waveform'] for i in batch])
     audio_sr = [i['audio_sr'] for i in batch]
     audio_duration = [i['audio_duration'] for i in batch]
@@ -33,6 +35,8 @@ def collate_fn_for_text(batch):
             "video_id": video_id,
             "video_feat": video_feat,
             "video_path": video_path,
+            "ref_audio_ebd": ref_audio_ebd,
+            "ref_audio_path": ref_audio_path,
             "audio_waveform": audio_waveform,
             "audio_sr": audio_sr,
             "audio_duration": audio_duration,
@@ -137,6 +141,8 @@ class VideoDataset(torch.utils.data.Dataset):
                 return self.getitem_video_feat_vidtok_with_waveform(idx)
             elif self.load_mode_item == "video_feat_text_with_waveform":
                 return self.getitem_video_feat_text_with_waveform(idx)
+            elif self.load_mode_item == "video_feat_ref_text_with_waveform":
+                return self.getitem_video_feat_ref_text_with_waveform(idx)
             else:
                 raise NotImplementedError(f"Load mode `{self.load_mode_item}` is not implemented.")
         except KeyboardInterrupt as e:
@@ -276,6 +282,40 @@ class VideoDataset(torch.utils.data.Dataset):
             "phone_seq": phone_seq
         }
     
+
+    def getitem_video_feat_ref_text_with_waveform(self, idx):
+        cur_va_path, cur_feat_path, ref_audio_path, duration_matrix, phone_id, phone_seq = self.metas[idx]
+        cur_video_id, _ = os.path.splitext(os.path.basename(cur_va_path))
+        video_feat = torch.Tensor(np.load(cur_feat_path))
+        ref_audio_ebd = torch.Tensor(np.load(ref_audio_path))
+    
+        audio_waveform, audio_sr, audio_duration = self.prepare_audio_data_from_va_file(va_path=cur_va_path, return_duration=True, channel_num = self.channel_num)
+        if 'audio_fake_duration' in duration_matrix:
+            cur_video_id = f"audio_{cur_video_id}"
+            # phone_id = torch.Tensor([0]).to(torch.int)
+            # phone_seq = ["<blank>"]
+            # duration_matrix = torch.zeros([self.latent_length, 1])
+        else:
+            cur_video_id = f"speech_{cur_video_id}"
+
+        phone_id = torch.Tensor([int(i) for i in phone_id.split(" ")]).to(torch.int)
+        phone_seq = [i for i in phone_seq.split(" ")]
+        duration_matrix = torch.Tensor(np.load(duration_matrix))
+
+        return {
+            "video_id": cur_video_id,
+            "video_feat": video_feat,
+            "video_path": cur_va_path,
+            "ref_audio_ebd": ref_audio_ebd,
+            "ref_audio_path": ref_audio_path,
+            "audio_waveform": audio_waveform,
+            "audio_sr": audio_sr,
+            "audio_duration": audio_duration,
+            "duration_matrix": duration_matrix,
+            "phone_id": phone_id,
+            "phone_seq": phone_seq
+        }
+
 
         
     def getitem_video_feat_cavp_with_waveform(self, idx):
