@@ -12,14 +12,11 @@ export TOKENIZERS_PARALLELISM=false
 
 
 python main.py \
-    --base "./config/vaflow_sda_dit_noise.yaml" "./config/vaflow_sda_dit_infer.yaml" \
-    -f "_noise_e94_5dopri5_final_infer_on_test_x1" \
+    --base "./config/vaflow_sda_dit_noise_text_mel.yaml" "./config/vaflow_sda_dit_noise_text_mel_infer.yaml" \
+    -f "_infer" \
     -t False \
     -i True \
-    --devices 0,1,2,3 \
-    model.params.guidance_scale=5.0 \
-    model.params.sample_method=dopri5 \
-    model.params.vaflow_ckpt_path="./log/2025_02_18-23_57_33-vaflow_sda_dit_noise/ckpt/epoch=0094-step=2.17e+05.ckpt" 
+    --devices 1,2,3 \
 
 
 # Noise
