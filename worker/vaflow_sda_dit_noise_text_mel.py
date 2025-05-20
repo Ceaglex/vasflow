@@ -170,8 +170,8 @@ class VAFlow(pl.LightningModule):
 
         ''' Init. Load ckpt. Tuning and Lora setting. '''
         # self.init_weight()
-        if not vaflow_custom and ckpt_dir_audio_dit is not None:
-            self.init_dit_layers(ckpt_dir_audio_dit)
+        # if not vaflow_custom and ckpt_dir_audio_dit is not None:
+        #     self.init_dit_layers(ckpt_dir_audio_dit)
         if vaflow_ckpt_path is not None:
             self.init_from_ckpt(vaflow_ckpt_path, ignore_keys=ignore_keys)
         # if videoclipvae_ckpt_path is not None:
@@ -376,10 +376,13 @@ class VAFlow(pl.LightningModule):
             video_feat = self.encode_image(video_frame)     # [bs, 100, 768] 
             video_feat = video_feat.detach()
         ref_speech_cond = self.ref_proj(ref_audio_ebd.unsqueeze(1))                 # [bs, 1, 768]
-        video_feat_cond = self.cond_proj(video_feat)                                # [bs, 100, 768] 
-        video_feat_cond = torch.concat([ref_speech_cond, video_feat_cond], dim = 1) # [bs, 101, 768]
-        video_feat_temporal_cond = self.temporal_cond_proj(video_feat)              # [bs, 100, 1]
-        video_feat_temporal_cond = torch.nn.functional.interpolate(video_feat_temporal_cond.permute(0, 2, 1), size=self.latent_length, mode='linear', align_corners=False) # [bs, 1, latent_length]
+        video_feat = torch.nn.functional.interpolate(video_feat.permute(0, 2, 1), size=self.latent_length, mode='nearest')  # [bs, 768, latent_length]
+        video_feat = video_feat.transpose(1, 2)                                     # [bs, latent_length, 768]
+        video_feat_cond = self.cond_proj(video_feat)                                # [bs, latent_length, 768] 
+        video_feat_cond = torch.concat([ref_speech_cond, video_feat_cond], dim = 1) # [bs, 1+latent_length, 768]
+        video_feat_temporal_cond = self.temporal_cond_proj(video_feat)              # [bs, latent_length, 1]
+        video_feat_temporal_cond = video_feat_temporal_cond.transpose(1, 2)         # [bs, 1, latent_length]
+        # video_feat_temporal_cond = torch.nn.functional.interpolate(video_feat_temporal_cond.permute(0, 2, 1), size=self.latent_length, mode='neaest', align_corners=False) # [bs, 1, latent_length]
         # if random.random() < self.unconditional_prob:
         #     video_feat_cond = torch.zeros_like(video_feat_cond).to(device)
 
@@ -529,11 +532,14 @@ class VAFlow(pl.LightningModule):
         else:
             video_feat = self.encode_image(video_frame)     # [B, F, C]
             video_feat = video_feat.detach()
+
         ref_speech_cond = self.ref_proj(ref_audio_ebd.unsqueeze(1))                 # [bs, 1, 768]
-        video_feat_cond = self.cond_proj(video_feat)                                # [bs, 100, 768]
-        video_feat_cond = torch.concat([ref_speech_cond, video_feat_cond], dim = 1) # [bs, 100, 768]
-        video_feat_temporal_cond = self.temporal_cond_proj(video_feat)              # [bs, 100, 1]
-        video_feat_temporal_cond = torch.nn.functional.interpolate(video_feat_temporal_cond.permute(0, 2, 1), size=self.latent_length, mode='linear', align_corners=False)  # [bs, 1, latent_length]
+        video_feat = torch.nn.functional.interpolate(video_feat.permute(0, 2, 1), size=self.latent_length, mode='nearest')  # [bs, 768, latent_length]
+        video_feat = video_feat.transpose(1, 2)                                     # [bs, latent_length, 768]
+        video_feat_cond = self.cond_proj(video_feat)                                # [bs, latent_length, 768] 
+        video_feat_cond = torch.concat([ref_speech_cond, video_feat_cond], dim = 1) # [bs, 1+latent_length, 768]
+        video_feat_temporal_cond = self.temporal_cond_proj(video_feat)              # [bs, latent_length, 1]
+        video_feat_temporal_cond = video_feat_temporal_cond.transpose(1, 2)         # [bs, 1, latent_length]
 
 
         _seeds = torch.randint(0, 10000, size=(self.num_samples_per_prompt,), device=device)

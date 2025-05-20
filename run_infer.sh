@@ -1,6 +1,4 @@
 
-#     model.params.guidance_scale=5.0 \
-#     model.params.sample_method=dopri5 \export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 export PYTHONPATH=$(pwd):$PYTHONPATH
 export TOKENIZERS_PARALLELISM=false
 
@@ -8,15 +6,15 @@ export TOKENIZERS_PARALLELISM=false
 : " For final infer
 "
 
-# Noise
 
 
-python main.py \
+python \
+    main.py \
     --base "./config/vaflow_sda_dit_noise_text_mel.yaml" "./config/vaflow_sda_dit_noise_text_mel_infer.yaml" \
     -f "_infer" \
     -t False \
     -i True \
-    --devices 1,2,3 \
+    --devices 0,1,2,3 \
 
 
 # Noise

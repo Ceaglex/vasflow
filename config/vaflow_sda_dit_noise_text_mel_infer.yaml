@@ -1,11 +1,12 @@
 model:
   params:
-    vaflow_ckpt_path : ./log/2025_05_01-12_39_37-vaflow_sda_dit_noise_text_mel_noise_sr16000/ckpt/epoch=0119-step=1.57e+05.ckpt
+    vaflow_ckpt_path : ./log/2025_05_01-12_39_37-vaflow_sda_dit_noise_text_mel_noise_sr16000/ckpt/epoch=0109-step=1.44e+05.ckpt
     ignore_keys: []
     guidance_scale          : 3
     sample_steps            : 10
     sample_method           : dopri5
     num_samples_per_prompt  : 1
+    dit_num_layers          : 24
 
 
 
@@ -24,7 +25,7 @@ infer_data:
     load_mode_meta      : Null
     load_mode_item      : video_feat_ref_text_with_waveform
     meta_dir            : /home/chengxin/chengxin/Dataset_Sound/MetaData/vaflow2_meta/meta
-    split               : test_25_ref_sample_2k_VGG     
+    split               : test_25_ref_Chem_LRS2_GRID_VGG_LJSpeech     
     dilimeter           : ${data.vggass.dilimeter}     
     # Audio video params
     audio_process_config : ${data.audio_process}
