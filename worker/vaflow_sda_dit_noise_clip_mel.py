@@ -31,38 +31,39 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from .base import instantiate_from_config, get_class_from_config
 from model.clip.clip_module import CLIPViT
-from model.stable_audio.stable_audio_transformer import StableAudioDiTModel_SelfAttn
+from model.stable_audio.stable_audio_transformer import StableAudioDiTModel
 from transformers import SpeechT5HifiGan
 from diffusers.models import AutoencoderKL
 from util.mel_filter import extract_batch_mel
 
 
 class WrappedModel(ModelWrapper):
-    def forward(self, x: torch.Tensor, t: torch.Tensor, latent_uncond: torch.Tensor,  global_cond: torch.Tensor,  w: float = 3.0, rotary_embedding=None, **extras):
+    def forward(self, x: torch.Tensor, t: torch.Tensor, c: torch.Tensor, latent_uncond: torch.Tensor, cross_attn_uncond = None, w: float = 3.0, rotary_embedding=None, **extras):
         t = t.unsqueeze(0).repeat(x.shape[0]).to(x)
+        if cross_attn_uncond is None:
+            c_uncond = torch.zeros_like(c).to(x)
+        else:
+            c_uncond = cross_attn_uncond
         x_uncond = copy.deepcopy(x)
         x_uncond[:,-latent_uncond.shape[1]:] = latent_uncond
         
 
-        
-        cond_pred = self.model(
-            x, 
-            t, 
-            global_hidden_states=global_cond,              # Removed in this version.
-            rotary_embedding=rotary_embedding,
-        ).sample
-        if w == 1:
-            return cond_pred
-        
         uncond_pred = self.model(
             x_uncond, 
             t, 
-            global_hidden_states=torch.zeros_like(global_cond, device = global_cond.device),              # Removed in this version.
+            encoder_hidden_states=c_uncond,
+            global_hidden_states=None,              # Removed in this version.
             rotary_embedding=rotary_embedding,
         ).sample
         if w < 1.0:     # 0.0 for unconditional
             return uncond_pred
-
+        cond_pred = self.model(
+            x, 
+            t, 
+            encoder_hidden_states=c,
+            global_hidden_states=None,              # Removed in this version.
+            rotary_embedding=rotary_embedding,
+        ).sample
         pred = uncond_pred + w * (cond_pred - uncond_pred)
         return pred
 
@@ -129,7 +130,7 @@ class VAFlow(pl.LightningModule):
             self.rotary_embed_dim = vaflow_custom_config.params.attention_head_dim // 2
             self.latent_in_dim = vaflow_custom_config.params.in_channels
         else:
-            self.vaflow = StableAudioDiTModel_SelfAttn.from_pretrained(
+            self.vaflow = StableAudioDiTModel.from_pretrained(
                 ckpt_dir_audio_dit, local_files_only=True,                  # From pretrained
                 low_cpu_mem_usage=False, ignore_mismatched_sizes=True,      # Setting for model structure changes
                 num_layers=dit_num_layers,                                  # Number of layers
@@ -144,6 +145,11 @@ class VAFlow(pl.LightningModule):
 
         self.phone_embedding = torch.nn.Embedding(num_embeddings=200, embedding_dim=phone_ebd_dim)
         self.phone_embedding.requires_grad_(True)
+        self.phone_proj = nn.Sequential(
+            nn.Linear(phone_ebd_dim, _dit_cross_attn_dim, bias=False),
+            nn.SiLU(),
+            nn.Linear(_dit_cross_attn_dim, _dit_cross_attn_dim, bias=False),
+        )
         self.pos_ebd_scale = _dit_cross_attn_dim ** -0.5
         self.positional_embedding = torch.nn.Embedding(num_embeddings=2000, embedding_dim=phone_ebd_dim)
         self.positional_embedding.requires_grad_(True)
@@ -152,7 +158,7 @@ class VAFlow(pl.LightningModule):
         self.ref_proj = nn.Sequential(
             nn.Linear(256, _dit_cross_attn_dim, bias=False),
             nn.SiLU(),
-            nn.Linear(_dit_cross_attn_dim, _dit_cross_attn_dim, bias=False),
+            nn.Linear(_dit_cross_attn_dim, phone_ebd_dim, bias=False),
         )
         self.cond_proj = nn.Sequential(
             nn.Linear(cond_feat_dim, _dit_cross_attn_dim, bias=False),
@@ -378,10 +384,21 @@ class VAFlow(pl.LightningModule):
         else:
             video_feat = self.encode_image(video_frame)     # [bs, 100, 768] 
             video_feat = video_feat.detach()
-        ref_speech_cond = self.ref_proj(ref_audio_ebd.unsqueeze(1))                 # [bs, 1, 768]
-        video_feat_cond = self.cond_proj(video_feat)                                # [bs, 100, 768] 
+        ref_speech_cond = self.ref_proj(ref_audio_ebd.unsqueeze(1))                   # [bs, 1, phone_latent_dim]
+        video_feat_cond = self.cond_proj(video_feat)                                  # [bs, 100, 768] 
         video_feat_cond = torch.nn.functional.interpolate(video_feat_cond.permute(0, 2, 1), size=self.latent_length, mode='nearest') # [bs, 768, latent_length]
 
+
+        # ref_speech_cond = self.ref_proj(ref_audio_ebd.unsqueeze(1))                 # [bs, 1, 768]
+        # video_feat = torch.nn.functional.interpolate(video_feat.permute(0, 2, 1), size=self.latent_length, mode='nearest')  # [bs, 768, latent_length]
+        # video_feat = video_feat.transpose(1, 2)                                     # [bs, latent_length, 768]
+        # video_feat_cond = self.cond_proj(video_feat)                                # [bs, latent_length, 768] 
+        # video_feat_cond = torch.concat([ref_speech_cond, video_feat_cond], dim = 1) # [bs, 1+latent_length, 768]
+        # video_feat_temporal_cond = self.temporal_cond_proj(video_feat)              # [bs, latent_length, 1]
+        # video_feat_temporal_cond = video_feat_temporal_cond.transpose(1, 2)         # [bs, 1, latent_length]
+        # video_feat_temporal_cond = torch.nn.functional.interpolate(video_feat_temporal_cond.permute(0, 2, 1), size=self.latent_length, mode='neaest', align_corners=False) # [bs, 1, latent_length]
+        # if random.random() < self.unconditional_prob:
+        #     video_feat_cond = torch.zeros_like(video_feat_cond).to(device)
 
 
         """ 2. Encode audio waveform to latents. """
@@ -399,22 +416,23 @@ class VAFlow(pl.LightningModule):
         # TODO: Pad Transcript information to audio_latent
         if random.random() < self.unconditional_prob:
             video_feat_cond = torch.zeros_like(video_feat_cond).to(device)
-            ref_speech_cond = torch.zeros_like(ref_speech_cond).to(device)
             phone_id = torch.zeros_like(phone_id, dtype=phone_id.dtype).to(device)                           # [bs, padded_phone_length]
             duration_matrix = torch.zeros_like(duration_matrix, dtype = duration_matrix.dtype).to(device)    # [bs, latent_length, padded_phone_length]
             duration_matrix[:,:,0] = 1                                                                       # [bs, latent_length, padded_phone_length]
+            ref_speech_cond = torch.zeros_like(ref_speech_cond).to(device)
 
         phone_latent = self.phone_embedding(phone_id)                                                         # [bs, padded_phone_length, phone_latent_dim]
         pos_ebd = self.pos_ebd_scale * self.positional_embedding(torch.tensor([[i for i in range(phone_latent.shape[1])]], device = device)).to(phone_latent.dtype)  # [1, padded_phone_length, phone_latent_dim]
         phone_latent = phone_latent + pos_ebd                                                                 # [bs, padded_phone_length, phone_latent_dim]
+        
         expanded_phone_latent = torch.bmm(duration_matrix, phone_latent)                                      # [bs, latent_length, phone_latent_dim]
         exp_pos_ebd = self.pos_ebd_scale * self.exp_positional_embedding(torch.tensor([[i for i in range(expanded_phone_latent.shape[1])]], device = device)).to(expanded_phone_latent.dtype)  # [1, latent_length, phone_latent_dim]
-        expanded_phone_latent = (expanded_phone_latent + exp_pos_ebd).transpose(1,2)                          # [bs, phone_latent_dim, latent_length]
-        
-        audio_latent = torch.cat([audio_latent, expanded_phone_latent, video_feat_cond], dim=1)               # [bs, original_channel + phone_latent_dim + clip_dim, latent_length]
-        video_latent = torch.cat([video_latent, expanded_phone_latent, video_feat_cond], dim=1)               # [bs, original_channel + phone_latent_dim + clip_dim, latent_length]
-
-
+        expanded_phone_latent = (expanded_phone_latent + exp_pos_ebd)                                         # [bs, latent_length, phone_latent_dim]
+        expanded_phone_latent = torch.cat([ref_speech_cond, expanded_phone_latent], dim=1)                    # [bs, 1+latent_length, phone_latent_dim]
+        expanded_phone_latent = self.phone_proj(expanded_phone_latent)
+        # expanded_phone_latent = torch.zeros([batch_size, 32, self.latent_length]).to(device)                # [bs, phone_latent_dim, latent_length]
+        audio_latent = torch.cat([audio_latent, video_feat_cond], dim=1)      # [bs, original_channel + 768, latent_length]
+        video_latent = torch.cat([video_latent, video_feat_cond], dim=1)      # [bs, original_channel + 768, latent_length]
 
 
         """ 3. Sample time step for DIT. """
@@ -441,7 +459,8 @@ class VAFlow(pl.LightningModule):
         audio_latent_pred = self.vaflow(
             x_t, 
             t, 
-            global_hidden_states=ref_speech_cond,              
+            encoder_hidden_states=expanded_phone_latent,
+            global_hidden_states=None,              
             rotary_embedding=rotary_embedding,
         ).sample
         
@@ -460,13 +479,48 @@ class VAFlow(pl.LightningModule):
         self.log("train/loss", loss, batch_size=batch_size, sync_dist=True, 
                     on_step=True, on_epoch=True, prog_bar=True, logger=True,)
 
+
+
+        # # # # # 3. Log to audio.
+        # # audio_latent = audio_latent[:, :self.original_channel, :]  # [bs, original_channel, latent_length]
+        # # audio_latent = audio_latent / self.scale_factor
+
+
+        # # # # audio_latent_cropped = audio_latent[:,:64,:125]                                                            # [bs, 64, 125]
+        # # # # audio_latent_cropped = audio_latent_cropped.reshape([batch_size, -1, 8, audio_latent_cropped.shape[-1]])   # [bs, 8, 8, 125]
+        # # # # audio_latent_cropped = audio_latent_cropped.transpose(-2,-3).transpose(-2, -1)                             # [bs, 8, 125, 8]
+        # # # # with torch.no_grad():
+        # # # #     mel_spectrogram_cropped = self.vae.decode(audio_latent_cropped).sample                             # [bs, 1, 500, 32]
+        # # # #     mel_spectrogram_cropped = torch.concat((mel_spectrogram_cropped, -11*torch.ones((batch_size, 1, 500, 32), device = device)), dim = -1)  # [bs, 1, 500, 64]
+        # # # #     gen_audio_cropped = self.vocoder(mel_spectrogram_cropped.squeeze(1))                               # [bs, cropped_duration*sr+...]
+        # # # #     gen_audio_cropped = gen_audio_cropped.cpu()
+        # # # # for i, audio in enumerate(gen_audio_cropped):
+        # # # #     audio = audio[:int(audio_sr[i]*audio_duration[i])].unsqueeze(0)                # [1, cropped_duration*sr]
+        # # # #     audio_path = os.path.join('./log/test_reshape', "{}_cropped.wav".format(video_id[i]))
+        # # # #     torchaudio.save(audio_path, audio, self.audio_sample_rate) 
+
+
+        # # audio_latent = audio_latent.reshape([batch_size, -1, 8, audio_latent.shape[-1]])   # [bs, 16, 8, latent_length]
+        # # audio_latent = audio_latent.transpose(-2,-3).transpose(-2, -1)                     # [bs, 8, latent_length, 16]
+        # # with torch.no_grad():
+        # #     mel_spectrogram = self.vae.decode(audio_latent).sample                             # [bs, 1, target_mel_length(latent_length*4), 64(16*4)]
+        # #     gen_audio = self.vocoder(mel_spectrogram.squeeze(1))                               # [bs, duration*sr+...]
+        # #     gen_audio = gen_audio.cpu()
+        # # for i, audio in enumerate(gen_audio):
+        # #     audio = audio[:int(audio_sr[i]*audio_duration[i])].unsqueeze(0)                # [1, duration*sr]
+        # #     audio_path = os.path.join('./log/test_reshape', "{}_rec.wav".format(video_id[i]))
+        # #     torchaudio.save(audio_path, audio, self.audio_sample_rate) 
+
+        # #     audio = waveform[i,:int(audio_sr[i]*audio_duration[i])].unsqueeze(0).cpu()     # [1, duration*sr]
+        # #     audio_path = os.path.join('./log/test_reshape', "{}_gt.wav".format(video_id[i]))
+        # #     torchaudio.save(audio_path, audio, self.audio_sample_rate) 
+
+
         return loss
         
-
     def on_train_batch_end(self, batch, batch_idx, dataloader_idx=0):
         if self.log_data_time:
             self.last_log_data_time = time.time()
-
 
     """ Validation """
     def on_validation_epoch_start(self):
@@ -476,7 +530,6 @@ class VAFlow(pl.LightningModule):
         self.val_log_dir_for_video_per_epoch = os.path.join(self.val_log_dir, "video", "epoch_{:04d}_global_step_{:.2e}".format(self.trainer.current_epoch, self.global_step))
         os.makedirs(self.val_log_dir_for_video_per_epoch, exist_ok=True)
         
-
     def validation_step_(self, batch, batch_idx, dataloader_idx=0, custom_device=None):
         #[bs, 100, 768]  list(bs)     [bs, 256]          list(bs)  list(bs)        [bs, latent_length, padded_phone_length]   [bs, padded_phone_length]   list(bs*list())
         video_frame,     video_id, _, ref_audio_ebd, _, audio_sr, audio_duration, duration_matrix,                           phone_id,                  phone_seq = self.get_input(batch, self.use_cache_video_feat)
@@ -485,42 +538,57 @@ class VAFlow(pl.LightningModule):
 
         wrapped_vaflow = WrappedModel(self.vaflow)
         solver = ODESolver(velocity_model=wrapped_vaflow) 
-
-        """ 1. Encode video frame to vae latents. """
-        # Encode video frame to CLIP embedding.
+        
+        # 1.1 Encode video frame to latents.
         if self.use_cache_video_feat:
-            video_feat = video_frame                        # [bs, 100, 768] 
+            video_feat = video_frame                        # [B, F, C]
         else:
-            video_feat = self.encode_image(video_frame)     # [bs, 100, 768] 
+            video_feat = self.encode_image(video_frame)     # [B, F, C]
             video_feat = video_feat.detach()
-        ref_speech_cond = self.ref_proj(ref_audio_ebd.unsqueeze(1))                 # [bs, 1, 768]
-        video_feat_cond = self.cond_proj(video_feat)                                # [bs, 100, 768] 
+
+
+        ref_speech_cond = self.ref_proj(ref_audio_ebd.unsqueeze(1))                   # [bs, 1, phone_latent_dim]
+        video_feat_cond = self.cond_proj(video_feat)                                  # [bs, 100, 768] 
         video_feat_cond = torch.nn.functional.interpolate(video_feat_cond.permute(0, 2, 1), size=self.latent_length, mode='nearest') # [bs, 768, latent_length]
+
+        # ref_speech_cond = self.ref_proj(ref_audio_ebd.unsqueeze(1))                 # [bs, 1, 768]
+        # video_feat = torch.nn.functional.interpolate(video_feat.permute(0, 2, 1), size=self.latent_length, mode='nearest')  # [bs, 768, latent_length]
+        # video_feat = video_feat.transpose(1, 2)                                     # [bs, latent_length, 768]
+        # video_feat_cond = self.cond_proj(video_feat)                                # [bs, latent_length, 768] 
+        # video_feat_cond = torch.concat([ref_speech_cond, video_feat_cond], dim = 1) # [bs, 1+latent_length, 768]
+        # video_feat_temporal_cond = self.temporal_cond_proj(video_feat)              # [bs, latent_length, 1]
+        # video_feat_temporal_cond = video_feat_temporal_cond.transpose(1, 2)         # [bs, 1, latent_length]
 
 
         _seeds = torch.randint(0, 10000, size=(self.num_samples_per_prompt,), device=device)
         for _rand_i in range(self.num_samples_per_prompt):
             generator = torch.Generator(device=device).manual_seed(_seeds[_rand_i].item())
             video_latent = randn_tensor((batch_size, self.original_channel, self.latent_length), device=device, generator=generator) # [bs, original_channel, latent_length]
+            video_latent = torch.cat([video_latent, video_feat_cond], dim=1)      # [bs, original_channel + 768, latent_length]
 
             phone_latent = self.phone_embedding(phone_id)                                                         # [bs, padded_phone_length, phone_latent_dim]
             pos_ebd = self.pos_ebd_scale * self.positional_embedding(torch.tensor([[i for i in range(phone_latent.shape[1])]], device = device)).to(phone_latent.dtype)  # [1, padded_phone_length, phone_latent_dim]
             phone_latent = phone_latent + pos_ebd                                                                 # [bs, padded_phone_length, phone_latent_dim]
+            
             expanded_phone_latent = torch.bmm(duration_matrix, phone_latent)                                      # [bs, latent_length, phone_latent_dim]
             exp_pos_ebd = self.pos_ebd_scale * self.exp_positional_embedding(torch.tensor([[i for i in range(expanded_phone_latent.shape[1])]], device = device)).to(expanded_phone_latent.dtype)  # [1, latent_length, phone_latent_dim]
-            expanded_phone_latent = (expanded_phone_latent + exp_pos_ebd).transpose(1,2)                          # [bs, phone_latent_dim, latent_length]
-            video_latent = torch.cat([video_latent, expanded_phone_latent, video_feat_cond], dim=1)      # [bs, original_channel + phone_latent_dim + 768, latent_length]
+            expanded_phone_latent = (expanded_phone_latent + exp_pos_ebd)                                         # [bs, latent_length, phone_latent_dim]
+            expanded_phone_latent = torch.cat([ref_speech_cond, expanded_phone_latent], dim=1)                    # [bs, 1+latent_length, phone_latent_dim]
+            expanded_phone_latent = self.phone_proj(expanded_phone_latent)                                        # [bs, 1+latent_length, cross_attn_dim]
 
+            
 
             phone_latent_uncond = self.phone_embedding(torch.zeros_like(phone_id, dtype=phone_id.dtype).to(device)) # [bs, padded_phone_length, phone_latent_dim]
-            phone_latent_uncond = phone_latent_uncond + pos_ebd                                                   # [bs, padded_phone_length, phone_latent_dim]
-            duration_matrix_uncond = torch.zeros_like(duration_matrix, dtype = duration_matrix.dtype).to(device)  # [bs, latent_length, padded_phone_length]
-            duration_matrix_uncond[:,:,0] = 1                                                                     # [bs, latent_length, padded_phone_length]
-            expanded_phone_latent_uncond = torch.bmm(duration_matrix_uncond, phone_latent_uncond)                 # [bs, latent_length, phone_latent_dim]
-            expanded_phone_latent_uncond = (expanded_phone_latent_uncond + exp_pos_ebd).transpose(1,2)            # [bs, phone_latent_dim, latent_length]
-            video_feat_cond_uncond = torch.zeros_like(video_feat_cond, dtype=video_feat_cond.dtype).to(device)    # [bs, 768, latent_length]
-            latent_uncond = torch.cat([expanded_phone_latent_uncond, video_feat_cond_uncond], dim=1)              # [bs, phone_latent_dim + 768， latent_length]  
-            # expanded_phone_latent_uncond = torch.zeros([batch_size, 32, self.latent_length]).to(device)         # [bs, phone_latent_dim, latent_length]
+            duration_matrix_uncond = torch.zeros_like(duration_matrix, dtype = duration_matrix.dtype).to(device)    # [bs, latent_length, padded_phone_length]
+            duration_matrix_uncond[:,:,0] = 1                                                                       # [bs, latent_length, padded_phone_length]
+            ref_speech_cond_uncond = torch.zeros_like(ref_speech_cond, dtype = ref_speech_cond.dtype).to(device)    # [bs, 1, phone_latent_dim]
+            phone_latent_uncond = phone_latent_uncond + pos_ebd                                                     # [bs, padded_phone_length, phone_latent_dim]
+
+            expanded_phone_latent_uncond = torch.bmm(duration_matrix_uncond, phone_latent_uncond)                   # [bs, latent_length, phone_latent_dim]
+            expanded_phone_latent_uncond = (expanded_phone_latent_uncond + exp_pos_ebd)                             # [bs, latent_length, phone_latent_dim]
+            expanded_phone_latent_uncond = torch.cat([ref_speech_cond_uncond, expanded_phone_latent_uncond], dim=1) # [bs, 1+latent_length, phone_latent_dim]
+            expanded_phone_latent_uncond = self.phone_proj(expanded_phone_latent_uncond)                            # [bs, 1+latent_length, cross_attn_dim]
+
 
 
             # 1.2 Rotary embedding.
@@ -542,8 +610,9 @@ class VAFlow(pl.LightningModule):
                 atol=1e-5,
                 rtol=1e-5,
                 step_size=step_size,
-                global_cond=ref_speech_cond,
-                latent_uncond=latent_uncond,
+                latent_uncond=torch.zeros_like(video_feat_cond, dtype = video_feat_cond.dtype).to(device),
+                c=expanded_phone_latent,
+                cross_attn_uncond=expanded_phone_latent_uncond,
                 w=self.guidance_scale,
                 rotary_embedding=rotary_embedding,
             )

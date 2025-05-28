@@ -1,10 +1,10 @@
 model:
   base_learning_rate: 4.0e-7
-  target: worker.vaflow_sda_dit_noise_text_mel.VAFlow
+  target: worker.vaflow_sda_dit_noise_clip_mel.VAFlow
   params:        
     # Model setting
     ckpt_dir_image_encoder     : "/home/chengxin/chengxin/vasflow/model/clip/ckpt/ViT-B-16.pt"
-    ckpt_dir_audio_dit         : "/home/chengxin/chengxin/vasflow/model/stable_audio/ckpt/transformer"
+    ckpt_dir_audio_dit         : "/home/chengxin/chengxin/vasflow/model/stable_audio/ckpt/transformer_clip"
     ckpt_dir_vocoder           : "/data-04/xihua/data/ckpt/audioldm2/huggingface/vocoder"
     vaflow_ckpt_path           : # "./log/2025_05_01-12_39_37-vaflow_sda_dit_noise_text_mel_noise_sr16000/ckpt/epoch=0109-step=1.44e+05.ckpt" # "./log/2025_04_30-01_06_12-vaflow_sda_dit_noise_text_mel_noise_sr16000/ckpt/epoch=0019-step=2.62e+04.ckpt"    #   "./log/2025_02_18-23_57_33-vaflow_sda_dit_noise/ckpt/epoch=0094-step=2.17e+05.ckpt"
     resume_training            : False     # False

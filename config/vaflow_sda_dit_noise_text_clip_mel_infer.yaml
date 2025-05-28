@@ -1,6 +1,6 @@
 model:
   params:
-    vaflow_ckpt_path : ./log/2025_05_13-11_58_33-vaflow_sda_dit_noise_text_mel_10l_cc_scratch/ckpt/epoch=0129-step=2.27e+05.ckpt
+    vaflow_ckpt_path : ./log/2025_05_18-20_29_26-vaflow_sda_dit_noise_text_clip_mel_10l_cn_scratch/ckpt/epoch=0189-step=3.32e+05.ckpt
     ignore_keys: []
     guidance_scale          : 3
     sample_steps            : 10

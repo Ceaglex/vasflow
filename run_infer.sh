@@ -10,11 +10,15 @@ export TOKENIZERS_PARALLELISM=false
 
 python \
     main.py \
-    --base "./config/vaflow_sda_dit_noise_text_mel.yaml" "./config/vaflow_sda_dit_noise_text_mel_infer.yaml" \
+    --base "./config/vaflow_sda_dit_noise_text_clip_mel.yaml" "./config/vaflow_sda_dit_noise_text_clip_mel_infer.yaml" \
     -f "_infer" \
     -t False \
     -i True \
-    --devices 0,1,2,3 \
+    --devices 0,1,2,3,4,5,6,7 \
+
+
+#     --base "./config/vaflow_sda_dit_noise_text_mel.yaml" "./config/vaflow_sda_dit_noise_text_mel_infer.yaml" \
+#     --base "./config/vaflow_sda_dit_noise_text_clip_mel.yaml" "./config/vaflow_sda_dit_noise_text_clip_mel_infer.yaml" \
 
 
 # Noise

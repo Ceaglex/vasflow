@@ -10,8 +10,8 @@ export TOKENIZERS_PARALLELISM=false
 
 python \
     main.py \
-    --base "./config/vaflow_sda_dit_noise_text_clip_mel.yaml" \
-    -f "_10l_cn_scratch" \
+    --base "./config/vaflow_sda_dit_noise_clip_mel.yaml" \
+    -f "_10l_ct_first10" \
     -t True \
     -i False \
-    --devices '4,5,6,7'
+    --devices 4,5,6,7
