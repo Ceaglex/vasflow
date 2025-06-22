@@ -63,7 +63,7 @@ class WrappedModel(ModelWrapper):
         if w < 1.0:     # 0.0 for unconditional
             return uncond_pred
 
-        pred = uncond_pred + w * (cond_pred - uncond_pred)
+        pred = cond_pred + w * (cond_pred - uncond_pred)
         return pred
 
 

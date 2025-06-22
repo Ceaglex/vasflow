@@ -64,7 +64,7 @@ class WrappedModel(ModelWrapper):
             global_hidden_states=None,              # Removed in this version.
             rotary_embedding=rotary_embedding,
         ).sample
-        pred = uncond_pred + w * (cond_pred - uncond_pred)
+        pred = cond_pred + w * (cond_pred - uncond_pred)
         return pred
 
 

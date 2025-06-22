@@ -38,16 +38,11 @@ from util.mel_filter import extract_batch_mel
 
 
 class WrappedModel(ModelWrapper):
-    def forward(self, x: torch.Tensor, t: torch.Tensor, c: torch.Tensor, latent_uncond = None, cross_attn_uncond = None, w: float = 3.0, rotary_embedding=None, **extras):
+    def forward(self, x: torch.Tensor, t: torch.Tensor, c: torch.Tensor, latent_uncond: torch.Tensor, w: float = 3.0, rotary_embedding=None, **extras):
         t = t.unsqueeze(0).repeat(x.shape[0]).to(x)
-        if cross_attn_uncond is None:
-            c_uncond = torch.zeros_like(c).to(x)
-        else:
-            c_uncond = cross_attn_uncond
-
+        c_uncond = torch.zeros_like(c).to(x)
         x_uncond = copy.deepcopy(x)
-        if latent_uncond is not None:
-            x_uncond[:,-latent_uncond.shape[1]:] = latent_uncond
+        x_uncond[:,-latent_uncond.shape[1]:] = latent_uncond
         
         uncond_pred = self.model(
             x_uncond, 
@@ -65,7 +60,7 @@ class WrappedModel(ModelWrapper):
             global_hidden_states=None,              # Removed in this version.
             rotary_embedding=rotary_embedding,
         ).sample
-        pred = cond_pred + w * (cond_pred - uncond_pred)
+        pred = uncond_pred + w * (cond_pred - uncond_pred)
         return pred
 
 
@@ -93,6 +88,7 @@ class VAFlow(pl.LightningModule):
                  use_cache_video_feat   : bool = False,
                  scale_factor           : float = 1.0,
                  unconditional_prob     : float = 0.3,
+                 randomdrop_prob        : float = 0.1,
                  # Val and infer setting  
                  guidance_scale         : float = 3.0,
                  sample_steps           : int = 50,
@@ -154,12 +150,12 @@ class VAFlow(pl.LightningModule):
         self.ref_proj = nn.Sequential(
             nn.Linear(256, _dit_cross_attn_dim, bias=False),
             nn.SiLU(),
-            nn.Linear(_dit_cross_attn_dim, _dit_cross_attn_dim - phone_ebd_dim, bias=False),
+            nn.Linear(_dit_cross_attn_dim, _dit_cross_attn_dim, bias=False),
         )
         self.cond_proj = nn.Sequential(
             nn.Linear(cond_feat_dim, _dit_cross_attn_dim, bias=False),
             nn.SiLU(),
-            nn.Linear(_dit_cross_attn_dim, _dit_cross_attn_dim - phone_ebd_dim, bias=False),
+            nn.Linear(_dit_cross_attn_dim, _dit_cross_attn_dim, bias=False),
         )
         self.temporal_cond_proj = nn.Sequential(
             nn.Linear(cond_feat_dim, _dit_cross_attn_dim, bias=False),
@@ -177,6 +173,7 @@ class VAFlow(pl.LightningModule):
         # self.init_weight()
         # if not vaflow_custom and ckpt_dir_audio_dit is not None:
         #     self.init_dit_layers(ckpt_dir_audio_dit)
+        self.heinit_dit_layers()
         if vaflow_ckpt_path is not None:
             self.init_from_ckpt(vaflow_ckpt_path, ignore_keys=ignore_keys)
         # if videoclipvae_ckpt_path is not None:
@@ -190,6 +187,7 @@ class VAFlow(pl.LightningModule):
         self.use_cache_video_feat = use_cache_video_feat
         self.scale_factor = scale_factor
         self.path = AffineProbPath(scheduler=CondOTScheduler())
+        self.randomdrop_prob = randomdrop_prob
         self.unconditional_prob = unconditional_prob
         assert 0.0 <= self.unconditional_prob <= 1.0, "Unconditional_prob should be in [0.0, 1.0]"
         # self.video_interpolate_mode = video_interpolate_mode
@@ -207,7 +205,16 @@ class VAFlow(pl.LightningModule):
             self.last_log_data_time = time.time()
         if monitor is not None:
             self.monitor = monitor
-        
+    
+    def heinit_dit_layers(self):
+        # 对self.vaflow.transformer_blocks中的每一层进行He初始化
+        for i, layer in enumerate(self.vaflow.transformer_blocks):
+            for name, param in layer.named_parameters():
+                if 'weight' in name and param.dim() > 1:
+                    nn.init.kaiming_normal_(param)
+                elif 'bias' in name:
+                    nn.init.zeros_(param)
+
     def init_from_ckpt(self, ckpt_path, ignore_keys=list()):
         ckpt = torch.load(ckpt_path, map_location="cpu")
         sd = ckpt["state_dict"]
@@ -280,6 +287,7 @@ class VAFlow(pl.LightningModule):
                     print(f"Skipping layer {src_layer_idx}.")
         
         print(f"=> Loaded {loaded_layers}/{ckpt_layers} (expect: {cur_dit_layers}) transformer blocks from checkpoint.")
+
 
     def init_weight(self):
         pass
@@ -381,10 +389,17 @@ class VAFlow(pl.LightningModule):
             video_feat = self.encode_image(video_frame)     # [bs, 100, 768] 
             video_feat = video_feat.detach()
         ref_speech_cond = self.ref_proj(ref_audio_ebd.unsqueeze(1))                 # [bs, 1, 768]
+        if random.random() < self.randomdrop_prob:
+            ref_speech_cond = torch.zeros_like(ref_speech_cond).to(device)          # [bs, 1, 768]
         video_feat = torch.nn.functional.interpolate(video_feat.permute(0, 2, 1), size=self.latent_length, mode='nearest')  # [bs, 768, latent_length]
         video_feat = video_feat.transpose(1, 2)                                     # [bs, latent_length, 768]
         video_feat_cond = self.cond_proj(video_feat)                                # [bs, latent_length, 768] 
         video_feat_cond = torch.concat([ref_speech_cond, video_feat_cond], dim = 1) # [bs, 1+latent_length, 768]
+        video_feat_temporal_cond = self.temporal_cond_proj(video_feat)              # [bs, latent_length, 1]
+        video_feat_temporal_cond = video_feat_temporal_cond.transpose(1, 2)         # [bs, 1, latent_length]
+        # video_feat_temporal_cond = torch.nn.functional.interpolate(video_feat_temporal_cond.permute(0, 2, 1), size=self.latent_length, mode='neaest', align_corners=False) # [bs, 1, latent_length]
+        # if random.random() < self.unconditional_prob:
+        #     video_feat_cond = torch.zeros_like(video_feat_cond).to(device)
 
 
         """ 2. Encode audio waveform to latents. """
@@ -406,18 +421,20 @@ class VAFlow(pl.LightningModule):
             phone_id = torch.zeros_like(phone_id, dtype=phone_id.dtype).to(device)                           # [bs, padded_phone_length]
             duration_matrix = torch.zeros_like(duration_matrix, dtype = duration_matrix.dtype).to(device)    # [bs, latent_length, padded_phone_length]
             duration_matrix[:,:,0] = 1                                                                       # [bs, latent_length, padded_phone_length]
+            video_feat_temporal_cond = torch.zeros_like(video_feat_temporal_cond, dtype=video_feat_temporal_cond.dtype).to(device)
+
 
 
         phone_latent = self.phone_embedding(phone_id)                                                         # [bs, padded_phone_length, phone_latent_dim]
         pos_ebd = self.pos_ebd_scale * self.positional_embedding(torch.tensor([[i for i in range(phone_latent.shape[1])]], device = device)).to(phone_latent.dtype)  # [1, padded_phone_length, phone_latent_dim]
         phone_latent = phone_latent + pos_ebd                                                                 # [bs, padded_phone_length, phone_latent_dim]
-
+        # TODO: New positional ebd may needed
         expanded_phone_latent = torch.bmm(duration_matrix, phone_latent)                                      # [bs, latent_length, phone_latent_dim]
         exp_pos_ebd = self.pos_ebd_scale * self.exp_positional_embedding(torch.tensor([[i for i in range(expanded_phone_latent.shape[1])]], device = device)).to(expanded_phone_latent.dtype)  # [1, latent_length, phone_latent_dim]
-        expanded_phone_latent = (expanded_phone_latent + exp_pos_ebd)                                         # [bs, latent_length, phone_latent_dim]
-        ref_speech_cond_pad = torch.zeros([batch_size, 1, expanded_phone_latent.shape[-1]]).to(device)        # [bs, 1, phone_latent_dim]
-        expanded_phone_latent = torch.concat([ref_speech_cond_pad, expanded_phone_latent], dim = 1)           # [bs, 1+latent_length, phone_latent_dim]
-        cross_attn_cond = torch.concat([video_feat_cond, expanded_phone_latent], dim = -1)                    # [bs, 1+latent_length, 768 + phone_latent_dim]
+        expanded_phone_latent = (expanded_phone_latent + exp_pos_ebd).transpose(1,2)                          # [bs, phone_latent_dim, latent_length]
+        # expanded_phone_latent = torch.zeros([batch_size, 32, self.latent_length]).to(device)                # [bs, phone_latent_dim, latent_length]
+        audio_latent = torch.cat([audio_latent, expanded_phone_latent, video_feat_temporal_cond], dim=1)      # [bs, original_channel + phone_latent_dim + 1, latent_length]
+        video_latent = torch.cat([video_latent, expanded_phone_latent, video_feat_temporal_cond], dim=1)      # [bs, original_channel + phone_latent_dim + 1, latent_length]
 
 
 
@@ -428,8 +445,8 @@ class VAFlow(pl.LightningModule):
 
         """ 4. Sample probability path. """
         path_sample = self.path.sample(t=t, x_0=video_latent, x_1=audio_latent)
-        dx_t = path_sample.dx_t  # [bs, original_channel , latent_length]
-        x_t = path_sample.x_t    # [bs, original_channel , latent_length]
+        dx_t = path_sample.dx_t  # [bs, original_channel + phone_latent_dim + 1, latent_length]
+        x_t = path_sample.x_t    # [bs, original_channel + phone_latent_dim + 1, latent_length]
         t = path_sample.t        # [bs]
 
 
@@ -446,7 +463,7 @@ class VAFlow(pl.LightningModule):
         audio_latent_pred = self.vaflow(
             x_t, 
             t, 
-            encoder_hidden_states=cross_attn_cond,
+            encoder_hidden_states=video_feat_cond,
             global_hidden_states=None,              
             rotary_embedding=rotary_embedding,
         ).sample
@@ -538,8 +555,8 @@ class VAFlow(pl.LightningModule):
         video_feat = video_feat.transpose(1, 2)                                     # [bs, latent_length, 768]
         video_feat_cond = self.cond_proj(video_feat)                                # [bs, latent_length, 768] 
         video_feat_cond = torch.concat([ref_speech_cond, video_feat_cond], dim = 1) # [bs, 1+latent_length, 768]
-        # video_feat_temporal_cond = self.temporal_cond_proj(video_feat)              # [bs, latent_length, 1]
-        # video_feat_temporal_cond = video_feat_temporal_cond.transpose(1, 2)         # [bs, 1, latent_length]
+        video_feat_temporal_cond = self.temporal_cond_proj(video_feat)              # [bs, latent_length, 1]
+        video_feat_temporal_cond = video_feat_temporal_cond.transpose(1, 2)         # [bs, 1, latent_length]
 
 
         _seeds = torch.randint(0, 10000, size=(self.num_samples_per_prompt,), device=device)
@@ -547,30 +564,26 @@ class VAFlow(pl.LightningModule):
             generator = torch.Generator(device=device).manual_seed(_seeds[_rand_i].item())
             video_latent = randn_tensor((batch_size, self.original_channel, self.latent_length), device=device, generator=generator) # [bs, original_channel, latent_length]
 
-            
             phone_latent = self.phone_embedding(phone_id)                                                         # [bs, padded_phone_length, phone_latent_dim]
             pos_ebd = self.pos_ebd_scale * self.positional_embedding(torch.tensor([[i for i in range(phone_latent.shape[1])]], device = device)).to(phone_latent.dtype)  # [1, padded_phone_length, phone_latent_dim]
             phone_latent = phone_latent + pos_ebd                                                                 # [bs, padded_phone_length, phone_latent_dim]
-
+            # TODO: New positional ebd may needed
             expanded_phone_latent = torch.bmm(duration_matrix, phone_latent)                                      # [bs, latent_length, phone_latent_dim]
             exp_pos_ebd = self.pos_ebd_scale * self.exp_positional_embedding(torch.tensor([[i for i in range(expanded_phone_latent.shape[1])]], device = device)).to(expanded_phone_latent.dtype)  # [1, latent_length, phone_latent_dim]
-            expanded_phone_latent = (expanded_phone_latent + exp_pos_ebd)                                         # [bs, latent_length, phone_latent_dim]
-            ref_speech_cond_pad = torch.zeros([batch_size, 1, expanded_phone_latent.shape[-1]]).to(device)        # [bs, 1, phone_latent_dim]
-            expanded_phone_latent = torch.concat([ref_speech_cond_pad, expanded_phone_latent], dim = 1)           # [bs, 1+latent_length, phone_latent_dim]
-            cross_attn_cond = torch.concat([video_feat_cond, expanded_phone_latent], dim = -1)                    # [bs, 1+latent_length, 768 + phone_latent_dim]
+            expanded_phone_latent = (expanded_phone_latent + exp_pos_ebd).transpose(1,2)                          # [bs, phone_latent_dim, latent_length]
+            # expanded_phone_latent = torch.zeros([batch_size, 32, self.latent_length]).to(device)                # [bs, phone_latent_dim, latent_length]
+            video_latent = torch.cat([video_latent, expanded_phone_latent, video_feat_temporal_cond], dim=1)      # [bs, original_channel + phone_latent_dim + 1, latent_length]
 
-
-
-            video_feat_cond_uncond = torch.zeros_like(video_feat_cond).to(device)                                   # [bs, 1+latent_length, 768]
             phone_latent_uncond = self.phone_embedding(torch.zeros_like(phone_id, dtype=phone_id.dtype).to(device)) # [bs, padded_phone_length, phone_latent_dim]
-            phone_latent_uncond = phone_latent_uncond + pos_ebd                                                     # [bs, padded_phone_length, phone_latent_dim]
-            duration_matrix_uncond = torch.zeros_like(duration_matrix, dtype = duration_matrix.dtype).to(device)    # [bs, latent_length, padded_phone_length]
-            duration_matrix_uncond[:,:,0] = 1                                                                       # [bs, latent_length, padded_phone_length]
-
-            expanded_phone_latent_uncond = torch.bmm(duration_matrix_uncond, phone_latent_uncond)                     # [bs, latent_length, phone_latent_dim]
-            expanded_phone_latent_uncond = (expanded_phone_latent_uncond + exp_pos_ebd)                               # [bs, latent_length, phone_latent_dim]
-            expanded_phone_latent_uncond = torch.concat([ref_speech_cond_pad, expanded_phone_latent_uncond], dim = 1) # [bs, 1+latent_length, phone_latent_dim]
-            cross_attn_cond_uncond = torch.concat([video_feat_cond_uncond, expanded_phone_latent_uncond], dim = -1)   # [bs, 1+latent_length, 768 + phone_latent_dim]
+            phone_latent_uncond = phone_latent_uncond + pos_ebd                                                   # [bs, padded_phone_length, phone_latent_dim]
+            duration_matrix_uncond = torch.zeros_like(duration_matrix, dtype = duration_matrix.dtype).to(device)  # [bs, latent_length, padded_phone_length]
+            duration_matrix_uncond[:,:,0] = 1                                                                     # [bs, latent_length, padded_phone_length]
+            # TODO: New positional ebd may needed
+            expanded_phone_latent_uncond = torch.bmm(duration_matrix_uncond, phone_latent_uncond)                 # [bs, latent_length, phone_latent_dim]
+            expanded_phone_latent_uncond = (expanded_phone_latent_uncond + exp_pos_ebd).transpose(1,2)            # [bs, phone_latent_dim, latent_length]
+            video_feat_temporal_uncond = torch.zeros_like(video_feat_temporal_cond, dtype=video_feat_temporal_cond.dtype).to(device)  # [bs, 1, latent_length]
+            latent_uncond = torch.cat([expanded_phone_latent_uncond, video_feat_temporal_uncond], dim=1)          # [bs, phone_latent_dim + 1， latent_length]  
+            # expanded_phone_latent_uncond = torch.zeros([batch_size, 32, self.latent_length]).to(device)         # [bs, phone_latent_dim, latent_length]
 
 
             # 1.2 Rotary embedding.
@@ -592,9 +605,8 @@ class VAFlow(pl.LightningModule):
                 atol=1e-5,
                 rtol=1e-5,
                 step_size=step_size,
-                latent_uncond=None,
-                c=cross_attn_cond,
-                cross_attn_uncond=cross_attn_cond_uncond,
+                c=video_feat_cond,
+                latent_uncond=latent_uncond,
                 w=self.guidance_scale,
                 rotary_embedding=rotary_embedding,
             )

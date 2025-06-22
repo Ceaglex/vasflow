@@ -44,15 +44,6 @@ class WrappedModel(ModelWrapper):
         x_uncond = copy.deepcopy(x)
         x_uncond[:,-latent_uncond.shape[1]:] = latent_uncond
         
-        uncond_pred = self.model(
-            x_uncond, 
-            t, 
-            encoder_hidden_states=c_uncond,
-            global_hidden_states=None,              # Removed in this version.
-            rotary_embedding=rotary_embedding,
-        ).sample
-        if w < 1.0:     # 0.0 for unconditional
-            return uncond_pred
         cond_pred = self.model(
             x, 
             t, 
@@ -60,7 +51,21 @@ class WrappedModel(ModelWrapper):
             global_hidden_states=None,              # Removed in this version.
             rotary_embedding=rotary_embedding,
         ).sample
+        if w == 1:
+            return cond_pred
+        
+        uncond_pred = self.model(
+            x_uncond, 
+            t, 
+            encoder_hidden_states=c_uncond,
+            global_hidden_states=None,              # Removed in this version.
+            rotary_embedding=rotary_embedding,
+        ).sample
+
+        # Previous Version
         pred = uncond_pred + w * (cond_pred - uncond_pred)
+        # Modified Version
+        # pred = cond_pred + w * (cond_pred - uncond_pred)
         return pred
 
 
