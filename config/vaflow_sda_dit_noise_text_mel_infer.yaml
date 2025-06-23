@@ -1,13 +1,14 @@
 model:
   params:
-    vaflow_ckpt_path : ./log/2025_06_03-12_05_50-vaflow_sda_dit_noise_text_mel_10l_cc_first10_vas/ckpt/epoch=0079-step=9.56e+04.ckpt 
+    vaflow_ckpt_path : ./log_backup/2025_06_10-21_53_23-vaflow_sda_dit_noise_text_mel_10l_cc_first10_sva/ckpt/epoch=0089-step=1.07e+05.ckpt
     # best svas:  ./log/2025_05_13-11_58_33-vaflow_sda_dit_noise_text_mel_10l_cc_first10/ckpt/epoch=0129-step=2.27e+05.ckpt
     # vas: ./log/2025_06_03-12_05_50-vaflow_sda_dit_noise_text_mel_10l_cc_first10_vas/ckpt/epoch=0079-step=9.56e+04.ckpt 
     # va : ./log_backup/2025_06_03-12_03_26-vaflow_sda_dit_noise_text_mel_10l_cc_first10_va/ckpt/epoch=0159-step=1.01e+05.ckpt
+    # sva: ./log_backup/2025_06_10-21_53_23-vaflow_sda_dit_noise_text_mel_10l_cc_first10_sva/ckpt/epoch=0089-step=1.07e+05.ckpt
     ignore_keys: []
-    guidance_scale          : 1
+    guidance_scale          : 0
     sample_steps            : 10
-    sample_method           : dopri5
+    sample_method           : dopri5   # midpoint |  dopri5 | euler 
     num_samples_per_prompt  : 1
     dit_num_layers          : 10
 

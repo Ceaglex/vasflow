@@ -11,7 +11,7 @@ export TOKENIZERS_PARALLELISM=false
 python \
     main.py \
     --base "./config/vaflow_sda_dit_noise_text_mel.yaml" "./config/vaflow_sda_dit_noise_text_mel_infer.yaml" \
-    -f "_infer_vas" \
+    -f "_infer_sva_cfg0" \
     -t False \
     -i True \
     --devices 0,1,2,3,4,5,6,7 \
