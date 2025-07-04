@@ -232,30 +232,30 @@ class DurationPredictor(pl.LightningModule):
             np.save(audio_path, aw)
             
             
-            predicted_length = duration_pred[i, :avhubert_length[i],1] # [pho_len]
-            predicted_length = torch.where(predicted_length < 1, torch.ones_like(predicted_length), predicted_length)
-            predicted_offset = duration_pred[i, :avhubert_length[i],0] # [pho_len]
-            predicted_offset = (predicted_offset >= 0.5).int()          # [pho_len]
-            ## GT
-            # predicted_length = length[i,:avhubert_length[i]]
-            # predicted_offset = start_offset[i,:avhubert_length[i]]
-            ## Scale
-            # predicted_total_phone_length = (predicted_length + predicted_offset - 1).sum()
-            scale = ((phone_length[i] + avhubert_length[i])-predicted_offset.sum()) / predicted_length.sum()
-            predicted_length = predicted_length * scale
+            # # predicted_length = durat    ion_pred[i, :avhubert_length[i],1] # [pho_len]
+            # # predicted_length = torch.where(predicted_length < 1, torch.ones_like(predicted_length), predicted_length)
+            # # predicted_offset = duration_pred[i, :avhubert_length[i],0] # [pho_len]
+            # # predicted_offset = (predicted_offset >= 0.5).int()          # [pho_len]
+            # # ## GT
+            # # # predicted_length = length[i,:avhubert_length[i]]
+            # # # predicted_offset = start_offset[i,:avhubert_length[i]]
+            # # ## Scale
+            # # # predicted_total_phone_length = (predicted_length + predicted_offset - 1).sum()
+            # # scale = ((phone_length[i] + avhubert_length[i])-predicted_offset.sum()) / predicted_length.sum()
+            # # predicted_length = predicted_length * scale
 
-            aw = torch.zeros_like(torch.from_numpy(aw))
-            current_pos = 0
-            for hubert_id in range(avhubert_length[i]):
-                offset = predicted_offset[hubert_id].item()
-                # offset = int(round(offset, 0))
+            # # aw = torch.zeros_like(torch.from_numpy(aw))
+            # # current_pos = 0
+            # # for hubert_id in range(avhubert_length[i]):
+            # #     offset = predicted_offset[hubert_id].item()
+            # #     # offset = int(round(offset, 0))
 
-                duration = predicted_length[hubert_id].item()
-                duration = min(phone_length[i] - current_pos, duration)
+            # #     duration = predicted_length[hubert_id].item()
+            # #     duration = min(phone_length[i] - current_pos, duration)
 
-                aw[hubert_id, int(current_pos + offset): int(current_pos + offset + duration)] = 1
-                current_pos = current_pos + offset + duration - 1
-            audio_path = os.path.join(self.val_log_dir_for_video_per_epoch, "{}".format(video_id[i]))
+            # #     aw[hubert_id, int(current_pos + offset): int(current_pos + offset + duration)] = 1
+            # #     current_pos = current_pos + offset + duration - 1
+            # # audio_path = os.path.join(self.val_log_dir_for_video_per_epoch, "{}".format(video_id[i]))
             np.save(audio_path, aw)
             
 
