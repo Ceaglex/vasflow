@@ -299,7 +299,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
         self.datasets = dict( (k, instantiate_from_config(self.dataset_configs[k])) for k in self.dataset_configs)
 
     def _train_dataloader(self):
-        if self.dataset_names["train"] in ["vggass", "asm-", "hits", "favd", "tavg", "avsync15", "vggsound", "vggss", "greatesthits", "landscape"]:
+        if self.dataset_names["train"] in ["vggass", "asm-", "hits", "favd", "tavg", "avsync15", "vggsound", "vggss", "greatesthits", "landscape", "lipphone"]:
             return DataLoader(self.datasets["train"], batch_size=self.batch_size, shuffle=True, collate_fn=self.collate_fn,
                               persistent_workers=self.persistent_workers, num_workers=self.num_workers, 
                               prefetch_factor=self.prefetch_factor,)
@@ -307,7 +307,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
             raise ValueError(f"Training dataset does not support {self.dataset_names['train']}")
         
     def _val_dataloader(self):
-        if self.dataset_names["validation"] in ["vggass", "asm-", "favd", "tavg", "avsync15", "vggsound", "vggss", "greatesthits", "landscape"]:
+        if self.dataset_names["validation"] in ["vggass", "asm-", "favd", "tavg", "avsync15", "vggsound", "vggss", "greatesthits", "landscape", "lipphone"]:
             # return DataLoader(self.datasets["validation"], batch_size=self.batch_size, shuffle=False, collate_fn=None,
             return DataLoader(self.datasets["validation"], batch_size=self.batch_size, shuffle=False, collate_fn=self.collate_fn,
                               persistent_workers=self.persistent_workers, num_workers=self.num_workers,
@@ -316,7 +316,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
             raise ValueError(f"Validation dataset does not support {self.dataset_names['validation']}")
         
     def _test_dataloader(self):
-        if self.dataset_names["test"] in ["vggass", "asm-", "favd", "tavg", "avsync15", "vggsound", "vggss", "greatesthits", "landscape"]:
+        if self.dataset_names["test"] in ["vggass", "asm-", "favd", "tavg", "avsync15", "vggsound", "vggss", "greatesthits", "landscape", "lipphone"]:
             return DataLoader(self.datasets["test"], batch_size=self.batch_size, shuffle=False, collate_fn=self.collate_fn,
                               persistent_workers=self.persistent_workers, num_workers=self.num_workers,
                               prefetch_factor=self.prefetch_factor,)
