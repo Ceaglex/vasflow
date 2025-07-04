@@ -1,4 +1,6 @@
 model:
+  # Aligner: /home/chengxin/chengxin/vasflow/log/2025_07_04-12_31_34-dp_Lattn/ckpt/epoch=0319-step=3.97e+04.ckpt
+  # DP for path prediction: /home/chengxin/chengxin/vasflow/model/dp/test.ipynb   /home/chengxin/chengxin/Dataset_Sound/MetaData/vaflow2_meta/meta/untitled.ipynb
   base_learning_rate: 4.0e-7
   target: worker.dp.DurationPredictor
   params:        
