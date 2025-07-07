@@ -16,7 +16,7 @@ from pytorch_lightning.callbacks import BaseFinetuning
 from safetensors import safe_open
 import copy
 
-from model.dp.attn_dp import AttnDP
+from model.dp.attn_dp import AttnDP_visualtts
 from .base import instantiate_from_config, get_class_from_config
 
 
@@ -34,7 +34,7 @@ class DurationPredictor(pl.LightningModule):
                  log_data_time   : bool = True):
         super(DurationPredictor, self).__init__()
 
-        self.dp = AttnDP(**dp_config)
+        self.dp = AttnDP_visualtts(**dp_config)
         self.resume_training = resume_training
         self.dp_ckpt_path = dp_ckpt_path
         if dp_ckpt_path is not None:

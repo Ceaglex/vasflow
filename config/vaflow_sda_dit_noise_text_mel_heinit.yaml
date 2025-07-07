@@ -1,6 +1,6 @@
 model:
   base_learning_rate: 4.0e-7
-  target: worker.vaflow_sda_dit_noise_text_mel_2.VAFlow
+  target: worker.vaflow_sda_dit_noise_text_mel_heinit.VAFlow
   params:        
     # Model setting
     ckpt_dir_image_encoder     : "/home/chengxin/chengxin/vasflow/model/clip/ckpt/ViT-B-16.pt"
