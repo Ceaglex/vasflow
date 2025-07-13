@@ -2,7 +2,7 @@ model:
   # Aligner: /home/chengxin/chengxin/vasflow/log/2025_07_04-12_31_34-dp_Lattn/ckpt/epoch=0319-step=3.97e+04.ckpt
   # DP for path prediction: /home/chengxin/chengxin/vasflow/model/dp/test.ipynb   /home/chengxin/chengxin/Dataset_Sound/MetaData/vaflow2_meta/meta/untitled.ipynb
   base_learning_rate: 4.0e-7
-  target: worker.dp_visualtts.DurationPredictor
+  target: worker.dp_tts.DurationPredictor
   params:        
     dp_config:
       phone_inputq_dim  : 64
@@ -26,7 +26,7 @@ model:
     dp_ckpt_path : '/home/chengxin/chengxin/vasflow/log/2025_07_04-12_31_34-dp_visualtts_Lattn/ckpt/epoch=0319-step=3.97e+04.ckpt'
     resume_training : False
     lr_warmup_steps : 2000
-    ignore_keys     : []
+    ignore_keys     : ['dp.phone_encoder.positial_embedding', 'dp.hubert_encoder.positial_embedding', 'dp.attn_decoder.positial_embedding']
     log_data_time   : True
 
 
@@ -55,17 +55,20 @@ data:
       target            : dataset.avhubert.LipPhoneDataset
       params:
         meta_dir            : ${data.lipphone.meta_dir}
-        split               : train_25_Chem_GRID
+        split               : train_25_Chem_GRID_LRS2
+        mask_ratio          : ${data.lipphone.mask_ratio}
     validation:
       target            : dataset.avhubert.LipPhoneDataset
       params:
         meta_dir            : ${data.lipphone.meta_dir}
-        split               : test_25_Chem_GRID     
+        split               : test_25_Chem_GRID_LRS2     
+        mask_ratio          : ${data.lipphone.mask_ratio}
     test:
       target            : dataset.avhubert.LipPhoneDataset
       params:
         meta_dir            : ${data.lipphone.meta_dir}
-        split               : test_25_Chem_GRID
+        split               : test_25_Chem_GRID_LRS2
+        mask_ratio          : ${data.lipphone.mask_ratio}
 
 
 
@@ -91,7 +94,7 @@ lightning:
     profiler              : Null
     auto_scale_batch_size : Null
     # precision             : ${model.params.mapper_precision}        # 16  |  32
-    check_val_every_n_epoch : 10   # 1  |  5  |  10  | Null
+    check_val_every_n_epoch : 40   # 1  |  5  |  10  | Null
     # val_check_interval      : 2000
     limit_val_batches       : 1.0
     limit_train_batches     : 1.0
@@ -119,7 +122,7 @@ lightning:
         mode              : "min"
         # For every_n_epochs:
         # Note: must work with setting trainer: max_epochs=N, check_val_every_n_epoch=M, save_on_train_epoch_end=False
-        every_n_epochs    : 20     # 1  |  5  |  10  | Null
+        every_n_epochs    : 40     # 1  |  5  |  10  | Null
         # every_n_train_steps : 2000    # 1000  |  2000  |  5000  |  Null
         save_on_train_epoch_end : False
 

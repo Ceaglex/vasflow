@@ -3,6 +3,7 @@ from tqdm import tqdm
 import torch, torchaudio, torchvision
 import numpy as np
 import os
+import random
 
 
 def collate_fn_for_text(batch):
@@ -33,8 +34,9 @@ def collate_fn_for_text(batch):
 
 
 class LipPhoneDataset(torch.utils.data.Dataset):
-    def __init__(self, meta_dir: str, split: str = 'train'):
+    def __init__(self, meta_dir: str, split: str = 'train', mask_ratio = 0):
         self.metas      = self._load_meta(meta_dir, split)
+        self.mask_ratio = mask_ratio
 
 
     def _load_meta(self, meta_dir: str, split: str):
@@ -72,6 +74,9 @@ class LipPhoneDataset(torch.utils.data.Dataset):
 
         avhubert = np.load(avhubert_path)
         avhubert = torch.from_numpy(avhubert).float()
+        if random.uniform(0, 1) < self.mask_ratio:
+            avhubert = torch.ones_like(avhubert).to(avhubert)
+            video_id = f"{video_id}_mask"
         avhubert_length = avhubert.shape[0]
 
         phone_id = phoneme_seq.split(' ')

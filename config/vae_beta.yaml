@@ -46,6 +46,7 @@ data:
 
   audio_process:
     duration              : 10.0
+    channel_num           : 1
   video_process:
     duration              : 10.0
     resize_input_size     : [224, 224]       # [256, 320]  |  [320, 576]

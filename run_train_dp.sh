@@ -10,8 +10,8 @@ export TOKENIZERS_PARALLELISM=false
 
 python \
     main.py \
-    --base "./config/dp.yaml" \
+    --base "./config/dp_tts.yaml" \
     -f "_Lattn" \
     -t True \
     -i False \
-    --devices '0,1,2,3'
+    --devices '4,5,6,7'

@@ -10,8 +10,8 @@ export TOKENIZERS_PARALLELISM=false
 
 python \
     main.py \
-    --base "./config/vaflow_sda_dit_noise_text_mel_2.yaml" \
-    -f "_10l_cc_heinit_randdrop_svas" \
+    --base "./config/vaflow_sda_dit_noise_text_mixas_mel.yaml" \
+    -f "_mix" \
     -t True \
     -i False \
-    --devices '4,5,6,7'
+    --devices '0,1,2,3'

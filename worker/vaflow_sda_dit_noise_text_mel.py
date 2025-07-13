@@ -646,11 +646,14 @@ class VAFlow(pl.LightningModule):
         _b = image.shape[0]
         x = einops.rearrange(image, "b f c h w -> (b f) c h w")
         x = self.image_encoder(x)
-
+        x = x[:, 0, :]
+        return einops.rearrange(x, "(b f) c -> b f c", b=_b)
+    
+    
         x = self.image_encoder.visual.ln_post(x[:, 0, :])   # Get CLS token only
-        if use_projection:
-            if self.image_encoder.visual.proj is not None:
-                x = x @ self.image_encoder.visual.proj
+        # if use_projection:
+        #     if self.image_encoder.visual.proj is not None:
+        #         x = x @ self.image_encoder.visual.proj
         x = einops.rearrange(x, "(b f) c -> b f c", b=_b)
         
         return x

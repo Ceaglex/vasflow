@@ -8,6 +8,10 @@ model:
 
 infer_data:
   ckpt_path           : Null
+  # ## DEBUG
+  # batch_size          : 1
+  # num_workers         : 0
+  # prefetch_factor     : NULL
   batch_size          : 30        
   num_workers         : 30
   prefetch_factor     : 2
@@ -20,7 +24,7 @@ infer_data:
     load_mode_meta      : Null
     load_mode_item      : video_frame
     meta_dir            : "/home/chengxin/chengxin/Dataset_Sound/MetaData/vaflow2_meta/clip"
-    split               : [visualtts_append]
+    split               : [vggsound_test]
     # Audio video params
     audio_process_config : ${data.audio_process}
     video_process_config : ${data.video_process}
