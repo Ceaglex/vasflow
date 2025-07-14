@@ -131,11 +131,11 @@ lightning:
 
   trainer:
     strategy              : ddp       # ddp  |  ddp_find_unused_parameters_false
-    max_epochs            : 10
+    max_epochs            : 20
     profiler              : Null
     auto_scale_batch_size : Null
     # precision             : ${model.params.mapper_precision}        # 16  |  32
-    check_val_every_n_epoch : 2   # 1  |  5  |  10  | Null
+    check_val_every_n_epoch : 4   # 1  |  5  |  10  | Null
     # val_check_interval      : 2000
     limit_val_batches       : 1.0
     limit_train_batches     : 1.0
@@ -163,7 +163,7 @@ lightning:
         mode              : "min"
         # For every_n_epochs:
         # Note: must work with setting trainer: max_epochs=N, check_val_every_n_epoch=M, save_on_train_epoch_end=False
-        every_n_epochs    : 2     # 1  |  5  |  10  | Null
+        every_n_epochs    : 4     # 1  |  5  |  10  | Null
         # every_n_train_steps : 2000    # 1000  |  2000  |  5000  |  Null
         save_on_train_epoch_end : False
 

@@ -380,6 +380,7 @@ class VAFlow(pl.LightningModule):
         else:
             video_feat = self.encode_image(video_frame)     # [bs, 100, 768] 
             video_feat = video_feat.detach()
+        if random.random() < self.unconditional_prob: ref_audio_ebd = torch.zeros_like(ref_audio_ebd).to(device)  # 随机drop掉一些spk_ebd，增强rubost
         ref_speech_cond = self.ref_proj(ref_audio_ebd.unsqueeze(1))                 # [bs, 1, 768]
         video_feat = torch.nn.functional.interpolate(video_feat.permute(0, 2, 1), size=self.latent_length, mode='nearest')  # [bs, 768, latent_length]
         video_feat = video_feat.transpose(1, 2)                                     # [bs, latent_length, 768]
@@ -412,6 +413,8 @@ class VAFlow(pl.LightningModule):
             duration_matrix = torch.zeros_like(duration_matrix, dtype = duration_matrix.dtype).to(device)    # [bs, latent_length, padded_phone_length]
             duration_matrix[:,:,0] = 1                                                                       # [bs, latent_length, padded_phone_length]
             video_feat_temporal_cond = torch.zeros_like(video_feat_temporal_cond, dtype=video_feat_temporal_cond.dtype).to(device)
+
+
 
         phone_latent = self.phone_embedding(phone_id)                                                         # [bs, padded_phone_length, phone_latent_dim]
         pos_ebd = self.pos_ebd_scale * self.positional_embedding(torch.tensor([[i for i in range(phone_latent.shape[1])]], device = device)).to(phone_latent.dtype)  # [1, padded_phone_length, phone_latent_dim]

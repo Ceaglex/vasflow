@@ -243,7 +243,7 @@ class VideoDataset_MixAudioSpeech(torch.utils.data.Dataset):
         if 'add' in mix_method:
             audio_waveform = audio_waveform * scale
             audio_waveform[:, wave_start_pos : wave_start_pos + wave_speech_length] = audio_waveform[:, wave_start_pos : wave_start_pos + wave_speech_length] + speech_waveform[:,:wave_speech_length]
-            if 'no_video' not in mix_method:
+            if 'novideo' not in mix_method:
                 audio_video_feat[feat_start_pos : feat_start_pos + feat_speech_length] = audio_video_feat[feat_start_pos : feat_start_pos + feat_speech_length] + speech_video_feat[:feat_speech_length]
 
 

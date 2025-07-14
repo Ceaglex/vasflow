@@ -11,7 +11,7 @@ export TOKENIZERS_PARALLELISM=false
 python \
     main.py \
     --base "./config/vaflow_sda_dit_noise_text_mixas_mel.yaml" \
-    -f "_mix" \
+    -f "_novide_randdropspkebd" \
     -t True \
     -i False \
-    --devices '0,1,2,3'
+    --devices '4,5,6,7'
