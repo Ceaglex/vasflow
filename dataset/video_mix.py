@@ -62,7 +62,7 @@ class VideoDataset_MixAudioSpeech(torch.utils.data.Dataset):
                  # Mix params
                  mix_methods    : list = ['add', 'add_novideo', 'insert'],
                  mix_prob       : float = 0.5,
-                 mix_scale      : list[float] = [0.3, 0.5],
+                 mix_scale      : list[float] = [0.3, 0.6],
                  # Process params 
                  audio_process_config : dict = None,
                  ):

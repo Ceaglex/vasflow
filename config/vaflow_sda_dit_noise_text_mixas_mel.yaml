@@ -66,7 +66,7 @@ data:
     load_mode_item      : "mixed_video_feat_ref_text_with_waveform"
     mix_methods         :  ['add', 'add_novideo', 'insert']
     mix_prob            : 0.5
-    mix_scale           : [0.3, 0.8]
+    mix_scale           : [0.3, 0.5]
     train:
       target            : dataset.video_mix.VideoDataset_MixAudioSpeech
       params:
