@@ -10,6 +10,7 @@ log_backup
 assets
 test
 temp
+speech_eval.ipynb
 
 */__pycache__/*
 # *.ipynb
