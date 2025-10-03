@@ -1,0 +1,12 @@
+{
+  "_class_name": "StableAudioDiTModel",
+  "_diffusers_version": "0.30.0.dev0",
+  "attention_head_dim": 64,
+  "global_states_input_dim": 1536,
+  "cross_attention_dim": 800,
+  "in_channels": 128,
+  "num_attention_heads": 24,
+  "num_layers": 24,
+  "out_channels": 128,
+  "time_proj_dim": 256
+}
