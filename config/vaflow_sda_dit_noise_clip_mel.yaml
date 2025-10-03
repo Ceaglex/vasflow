@@ -46,7 +46,7 @@ data:
     # prefetch_factor     : NULL
     num_workers         : 36
     prefetch_factor     : 2
-    collate_fn          :  dataset.video.collate_fn_for_text
+    collate_fn          : dataset.video.collate_fn_for_text
     persistent_workers  : False 
 
   audio_process:
