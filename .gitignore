@@ -7,7 +7,7 @@ predict_encoder
 model
 util
 */__pycache__/*
-# *.ipynb
+*.jpg
 *.pkl
 *.pth
 *.ckpt
