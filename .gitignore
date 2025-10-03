@@ -1,8 +1,8 @@
-untitled.ipynb
-inference.ipynb
-model
-util
-vis
+# untitled.ipynb
+# inference.ipynb
+# model
+# util
+# vis
 
 log
 log_backup
@@ -24,6 +24,7 @@ temp
 *.txt
 *.png
 *.tar.gz
+*.safetensors
 nohup.out
 predict.out
 test.py
