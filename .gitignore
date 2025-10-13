@@ -10,10 +10,11 @@ log_backup
 assets
 test
 temp
-speech_eval.ipynb
+#speech_eval.ipynb
 
 */__pycache__/*
 # *.ipynb
+# test.py
 *.pkl
 *.pth
 *.ckpt
@@ -27,8 +28,5 @@ speech_eval.ipynb
 *.png
 *.tar.gz
 *.safetensors
-nohup.out
-predict.out
-test.py
 .git
 *.tar.gz
